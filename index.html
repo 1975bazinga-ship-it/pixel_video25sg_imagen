@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Pixelizador Retrô Pro — Modos, Paletas & Vídeo</title>
+<style>
+  *{box-sizing:border-box;font-family:'Courier New',monospace}
+  body{background:#121612;margin:0;padding:15px;color:#b3ffb3}
+  .app{max-width:1400px;margin:0 auto;background:#0b0f0b;border:3px solid #2e7d32;border-radius:12px;padding:16px}
+  h2{color:#7cfc00;text-align:center;margin:0 0 12px;border-bottom:2px dashed #3e8e41;padding-bottom:6px;font-size:1.2rem}
+  h3{color:#9eff9e;margin:0 0 8px;border-left:4px solid #7cfc00;padding-left:6px;font-size:.95rem}
+  .panel{background:#101510;border:2px solid #3e8e41;border-radius:10px;padding:12px;margin-bottom:14px}
+  .cols{display:flex;gap:12px;flex-wrap:wrap}
+  .col{flex:1 1 260px;background:#0d130d;border:1px solid #2e7d32;border-radius:8px;padding:10px}
+  .plist{display:grid;grid-template-columns:repeat(auto-fill,minmax(145px,1fr));gap:3px;max-height:260px;overflow-y:auto}
+  .plist label{display:flex;align-items:center;gap:4px;padding:3px 5px;border-radius:4px;cursor:pointer;font-size:.75rem;color:#d0ffd0}
+  .plist label:hover{background:#1e3a1e}
+  .cat{grid-column:1/-1;color:#7cfc00;font-size:.7rem;text-transform:uppercase;border-bottom:1px dashed #3e8e41;padding:4px 0 2px;margin-top:4px}
+  .btn{background:#1e3a1e;color:#b3ffb3;border:2px solid #7cfc00;border-radius:5px;padding:6px 10px;font-weight:bold;cursor:pointer;font-size:.78rem;text-transform:uppercase}
+  .btn:hover{background:#2e7d32;color:#fff}
+  .btn.active{background:#7cfc00;color:#000}
+  .render-btn{width:100%;padding:10px;font-size:1rem;background:#0f2a0f;color:#7cfc00;margin-top:6px}
+  .save-btn{width:100%;padding:10px;font-size:.95rem;background:#0f1a2a;border-color:#00bfff;color:#00bfff;margin-top:6px}
+  .rec-btn{width:100%;padding:10px;font-size:.95rem;background:#2a0f0f;border-color:#ff5252;color:#ff9e9e;margin-top:6px}
+  .rec-btn.recording{background:#b71c1c;color:#fff;animation:pulse 1s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+  .row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:6px 0;font-size:.82rem}
+  input[type=color]{width:40px;height:28px;border:1px solid #7cfc00;background:#000;cursor:pointer;padding:0}
+  input[type=number],input[type=text],select{padding:5px;background:#1e2a1e;border:1px solid #3e8e41;color:#b3ffb3;border-radius:4px;font-family:inherit;font-size:.82rem}
+  input[type=range]{accent-color:#7cfc00;flex:1}
+  .swatches{display:flex;flex-wrap:wrap;gap:4px;min-height:24px;margin-top:5px}
+  .swatch{width:22px;height:22px;border-radius:4px;border:1px solid #7cfc00;cursor:pointer}
+  .canvas-wrap{background-color:#1a1a1a;background-image:linear-gradient(45deg,#2a2a2a 25%,transparent 25%),linear-gradient(-45deg,#2a2a2a 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#2a2a2a 75%),linear-gradient(-45deg,transparent 75%,#2a2a2a 75%);background-size:20px 20px;background-position:0 0,0 10px,10px -10px,-10px 0;border:2px solid #2e7d32;border-radius:8px;padding:10px;min-height:360px;display:flex;align-items:center;justify-content:center;overflow:auto;position:relative}
+  #pixelCanvas{image-rendering:pixelated;display:block;cursor:crosshair}
+  .info{text-align:center;margin-top:6px;font-size:.82rem;color:#9eff9e}
+  .box{border:1px dashed #3e8e41;padding:7px;border-radius:6px;margin-top:6px;background:#090d09}
+  .video-bar{display:none;background:#0d130d;border:1px solid #7cfc00;border-radius:8px;padding:8px;margin-top:8px;align-items:center;gap:8px;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="panel">
+    <h2>⚙️ PIXELIZADOR RETRÔ PRO — MODOS DE PIXELIZAÇÃO, PALETAS, CHROMA KEY & VÍDEO</h2>
+    <div class="cols">
+      <!-- COLUNA 1: PALETAS -->
+      <div class="col" style="flex:2 1 340px">
+        <h3>🎮 PALETAS DE CORES (<span id="palCount">0</span>)</h3>
+        <input type="text" id="palSearch" placeholder="🔍 Filtrar paleta (ex: Game Boy, PICO, Neon)..." style="width:100%;margin-bottom:6px">
+        <div class="plist" id="presetList"></div>
+      </div>
+
+      <!-- COLUNA 2: REMOVER FUNDO & PERSONALIZADA -->
+      <div class="col">
+        <h3>🪄 REMOVER FUNDO (CHROMA KEY)</h3>
+        <div class="box">
+          <div class="row">
+            <label><input type="checkbox" id="bgRemoveEnable"> <b>Ativar Remoção</b></label>
+          </div>
+          <div class="row">
+            <span>Cor:</span>
+            <input type="color" id="bgKeyColor" value="#00ff00">
+            <button class="btn" id="eyedropperBtn" title="Clique e depois clique na imagem">💉 Conta-Gotas</button>
+          </div>
+          <div class="row">
+            <span>Tolerância: <b id="tolVal">35</b></span>
+            <input type="range" id="bgTolerance" min="1" max="150" value="35">
+          </div>
+          <div class="row">
+            <button class="btn" id="autoCornerBtn" style="width:100%">✨ Detectar Cor dos Cantos</button>
+          </div>
+        </div>
+
+        <h3 style="margin-top:10px">🎨 PALETA CUSTOM</h3>
+        <div class="row">
+          <input type="color" id="colorPicker" value="#ff0055">
+          <button class="btn" id="addColorBtn">+ Cor</button>
+          <button class="btn" id="useCustomBtn">Usar</button>
+          <button class="btn" id="clearCustomBtn">Limpar</button>
+        </div>
+        <div class="swatches" id="customSwatches"></div>
+      </div>
+
+      <!-- COLUNA 3: MODOS DE PIXELIZAÇÃO -->
+      <div class="col">
+        <h3>🧩 1. MODO DE PIXELIZAÇÃO</h3>
+        <div class="row">
+          <label>Bloco (px):</label>
+          <input type="number" id="blockSize" value="2" min="1" max="64" style="width:65px">
+          <input type="range" id="blockRange" min="1" max="48" value="2">
+        </div>
+        <div class="row">
+          <select id="pixelMode" style="width:100%">
+            <optgroup label="Clássicos">
+              <option value="avg">1. Quadrado (Média de Cor)</option>
+              <option value="center">2. Quadrado (Amostra Central)</option>
+              <option value="min">3. Erosão de Sombras (Mais Escuro)</option>
+              <option value="max">4. Dilatação de Luz (Mais Claro)</option>
+            </optgroup>
+            <optgroup label="Dithering (Pontilhado Retrô)">
+              <option value="bayer2">5. Dithering Bayer 2x2</option>
+              <option value="bayer4">6. Dithering Bayer 4x4</option>
+              <option value="halftone">7. Meio-Tom (Pontos Variáveis)</option>
+            </optgroup>
+            <optgroup label="Formas & Texturas">
+              <option value="circle">8. Matriz de LEDs Circulares</option>
+              <option value="diamond">9. Losangos / Diamantes</option>
+              <option value="lego">10. Blocos de Montar (LEGO)</option>
+              <option value="cross">11. Ponto Cruz (Bordado)</option>
+              <option value="tile3d">12. Azulejos 3D Chanfrados</option>
+            </optgroup>
+            <optgroup label="Telas & Terminal">
+              <option value="crt">13. Subpixels CRT (RGB)</option>
+              <option value="scanline">14. Monitor Scanlines</option>
+              <option value="ascii">15. Arte ASCII Retrô</option>
+            </optgroup>
+          </select>
+        </div>
+        <div class="row">
+          <label><input type="checkbox" id="gridEnable"> Grade entre pixels</label>
+        </div>
+        <div class="row">
+          <label><input type="checkbox" id="toonEnable"> <b>Contorno Preto (Desenho)</b></label>
+        </div>
+        <button class="btn render-btn" id="renderBtn">▶ RENDERIZAR AGORA</button>
+
+        <div class="box" style="margin-top:8px">
+          <h3>💾 EXPORTAR</h3>
+          <div class="row">
+            <input type="text" id="filename" value="pixel_art" style="flex:1">
+            <select id="fmt">
+              <option value="png">PNG (Transp.)</option>
+              <option value="jpg">JPG</option>
+            </select>
+          </div>
+          <div class="row">
+            <label><input type="checkbox" id="saveExactSize" checked> Tamanho Original (c/ efeitos)</label>
+          </div>
+          <button class="btn save-btn" id="saveBtn">💾 BAIXAR IMAGEM / FRAME</button>
+          <button class="btn rec-btn" id="recVideoBtn" style="display:none">⏺ GRAVAR VÍDEO (.WEBM)</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ÁREA DA IMAGEM / VÍDEO -->
+  <div class="panel">
+    <div class="row" style="justify-content:space-between">
+      <div class="row">
+        <input type="file" id="fileInput" accept="image/*,video/mp4,video/webm">
+        <button class="btn" id="sampleImgBtn">🖼️ Imagem Teste</button>
+        <button class="btn" id="sampleVidBtn">🎬 Animação Teste</button>
+      </div>
+      <div class="row">
+        <span>Zoom: <b id="zoomVal">100%</b></span>
+        <input type="range" id="zoom" min="20" max="300" value="100" style="width:120px">
+      </div>
+    </div>
+
+    <div class="video-bar" id="videoBar">
+      <button class="btn" id="playPauseBtn">⏸ Pausar</button>
+      <button class="btn" id="restartVidBtn">⏮ Início</button>
+      <input type="range" id="seekBar" min="0" max="100" value="0" step="0.1" style="flex:1">
+      <span id="timeLabel">0.0s / 0.0s</span>
+      <label><input type="checkbox" id="loopVid" checked> Loop</label>
+    </div>
+
+    <div class="canvas-wrap">
+      <canvas id="pixelCanvas" width="500" height="320"></canvas>
+    </div>
+    <div class="info" id="info">Carregue uma imagem ou vídeo curto (.mp4 / .webm até 25s), ou clique nos botões de teste acima.</div>
+  </div>
+</div>
+
+<video id="hiddenVideo" playsinline muted style="display:none"></video>
+
+<script>
+const RAW_PALETTES = [
+  ['Básico','All Colors (Original)',''],
+  ['Básico','1-Bit Preto & Branco','000000,ffffff'],
+  ['Básico','1-Bit GameBoy Pocket','181818,e0f8d0'],
+  ['Básico','2-Bit Grayscale (4 tons)','000000,555555,aaaaaa,ffffff'],
+  ['Básico','3-Bit RGB (8 cores)','000000,ff0000,00ff00,0000ff,ffff00,00ffff,ff00ff,ffffff'],
+  ['Portáteis','Game Boy DMG (Verde)','0f380f,306230,8bac0f,9bbc0f'],
+  ['Portáteis','Game Boy Light (Azul)','003838,006262,00acac,00dcdc'],
+  ['Portáteis','Virtual Boy (Vermelho)','000000,550000,aa0000,ff0000'],
+  ['Portáteis','Game Gear','000000,ffffff,ff0000,00ff00,0000ff,ffff00,00ffff,ff00ff,ff8800,8800ff,00ff88,888888'],
+  ['Portáteis','Neo Geo Pocket','000000,ffffff,d80000,00a800,0058f8,f8d800,f87800,a800f8,888888'],
+  ['Portáteis','Nokia 3310','43523d,c7f0d8'],
+  ['Consoles 8-Bit','NES Clássico','000000,fcfcfc,bcbcbc,7c7c7c,0000fc,0078f8,3cbcfc,a4e4fc,e40058,a80020,f83800,f87800,f8b800,f8d878,58d854,00a800'],
+  ['Consoles 8-Bit','Master System','000000,555555,aaaaaa,ffffff,aa0000,ff5555,00aa00,55ff55,0000aa,5555ff,aa5500,ffff55,00aaaa,55ffff,aa00aa,ff55ff'],
+  ['Consoles 8-Bit','Atari 2600','000000,404040,808080,bfbfbf,ffffff,800000,ff4040,008000,40ff40,000080,4040ff,808000,ffff40,804000,ff8040'],
+  ['Consoles 16-Bit','SNES Fantasia','000000,ffffff,2d1b2e,574b67,937ac5,f9c22b,fb6b1d,e83b3b,831c5d,1ebc73,91db69,4d9be6,8fd3ff,c7dcd0'],
+  ['Consoles 16-Bit','Mega Drive / Genesis','000000,242424,6d6d6d,b6b6b6,ffffff,920000,ff0000,ff9200,ffff00,009200,00ff00,0092ff,00ffff,0000b6,9200ff,ff6db6'],
+  ['Consoles 16-Bit','PC Engine','000000,ffffff,ff0000,00ff00,0000ff,ffff00,ff00ff,00ffff,ff8000,8000ff,0080ff,80ff00,ff0080,808080'],
+  ['Computadores','Commodore 64','000000,ffffff,880000,aaffee,cc44cc,00cc55,0000aa,eeee77,dd8855,664400,ff7777,333333,777777,aaff66,0088ff,bbbbbb'],
+  ['Computadores','ZX Spectrum','000000,0000d7,d70000,d700d7,00d700,00d7d7,d7d700,d7d7d7,0000ff,ff0000,ff00ff,00ff00,00ffff,ffff00,ffffff'],
+  ['Computadores','CGA Magenta/Ciano','000000,55ffff,ff55ff,ffffff'],
+  ['Computadores','CGA Verde/Vermelho','000000,55ff55,ff5555,ffff55'],
+  ['Computadores','EGA 16 Cores','000000,0000aa,00aa00,00aaaa,aa0000,aa00aa,aa5500,aaaaaa,555555,5555ff,55ff55,55ffff,ff5555,ff55ff,ffff55,ffffff'],
+  ['Computadores','MSX','000000,3eb849,74d07d,5955e0,8076f1,b95e51,65dbef,db6559,ff897d,ccc35e,ded087,3aa241,b766b5,cccccc,ffffff'],
+  ['Pixel Art Pro','PICO-8 (16 cores)','000000,1d2b53,7e2553,008751,ab5236,5f574f,c2c3c7,fff1e8,ff004d,ffa300,ffec27,00e436,29adff,83769c,ff77a8,ffccaa'],
+  ['Pixel Art Pro','TIC-80 (16 cores)','1a1c2c,5d275d,b13e53,ef7d57,ffcd75,a7f070,38b764,257179,29366f,3b5dc9,41a6f6,73eff7,f4f4f4,94b0c2,566c86,333c57'],
+  ['Pixel Art Pro','Endesga 32','be4a2f,d77643,ead4aa,e4a672,b86f50,733e39,3e2731,a22633,e43b44,f77622,feae34,fee761,63c74d,3e8948,265c42,193c3e,124e89,0099db,2ce8f5,ffffff,c0cbdc,8b9bb4,5a6988,3a4466,262b44,181425,ff0044,68386c,b55088,f6757a,e8b796,c28569'],
+  ['Pixel Art Pro','Resurrect 64','2e222f,3e3546,625565,966c6c,ab947a,694f62,7f708a,9babb2,c7dcd0,ffffff,6e2727,b33831,ea4f36,f57d4a,ae2334,e83b3b,fb6b1d,f79617,f9c22b,7a3045,9e4539,cd683d,e6904e,fbb954,4c3e24,676633,a2a947,d5e04b,fbff86,165a4c,239063,1ebc73,91db69,cddf6c,313638,374e4a,547e64,92a984,b2ba90,0b5e65,0b8a8f,0eaf9b,30e1b9,8ff8e2,323353,484a77,4d65b4,4d9be6,8fd3ff,45293f,6b3e75,905ea9,a884f3,eaaded,753c54,a24b6f,cf657f,ed8099,831c5d,c32454,f04f78,f68181,fca790,fdcbb0'],
+  ['Jogos Clássicos','Super Mario World','000000,ffffff,f83800,f8b800,00a800,58d854,0058f8,3cbcfc,f8d878,a0522d'],
+  ['Jogos Clássicos','Zelda Link to the Past','000000,ffffff,186818,38a838,88e858,d8b858,986828,c82828,2868c8,f8e898'],
+  ['Jogos Clássicos','Sonic Green Hill','000000,ffffff,0028a8,0068f8,58b8f8,009800,48d828,b86818,f8b848,e81818,f8e800'],
+  ['Jogos Clássicos','Doom Hell','000000,2b0000,5c0000,8f0000,c20000,ff2a00,ff7b00,ffc800,4f4f4f,8a8a8a,c7c7c7'],
+  ['Atmosfera & Estilo','Cyberpunk Neon','0d0221,261447,650d89,920075,f6019d,ff3864,ff6c11,f9c80e,2de2e6,023788'],
+  ['Atmosfera & Estilo','Vaporwave Pastel','1a0b2e,4a2c6d,8e44ad,e056fd,ff7979,badc58,7ed6df,dff9fb,ffbe76'],
+  ['Atmosfera & Estilo','Matrix Terminal','000000,001a00,003b00,006600,009900,00cc00,00ff41,99ff99,ffffff'],
+  ['Atmosfera & Estilo','Sépia Vintage','1e1209,3d2614,5e3c20,825632,a67449,c9986b,e3bd96,f7dfc4'],
+  ['Atmosfera & Estilo','Noir Detetive','000000,171717,2e2e2e,4a4a4a,6e6e6e,969696,c2c2c2,ebebeb,ffffff'],
+  ['Atmosfera & Estilo','Câmera Térmica','000033,0000cc,6600ff,cc00ff,ff0066,ff6600,ffcc00,ffff66,ffffff'],
+  ['Atmosfera & Estilo','Blueprint Engenharia','001f3f,003366,004c99,0066cc,3399ff,99ccff,ffffff'],
+  ['Atmosfera & Estilo','Ouro & Bronze','1a1100,422c00,734e00,a67400,d49b00,f5bf18,ffe066,fff4b8']
+];
+
+const PALETTES = RAW_PALETTES.map((p, idx) => ({
+  id: 'pal_' + idx,
+  cat: p[0],
+  name: p[1],
+  colors: p[2] ? p[2].split(',').map(h => '#' + h) : null
+}));
+
+document.getElementById('palCount').textContent = PALETTES.length;
+
+let sourceType = null; // 'image' | 'video' | 'synth'
+let origImg = null;
+let selectedPal = PALETTES[0], customColors = [], useCustom = false;
+let pickingColor = false, zoom = 1, animId = null, synthTime = 0;
+
+const canvas = document.getElementById('pixelCanvas');
+const ctx = canvas.getContext('2d');
+const video = document.getElementById('hiddenVideo');
+const bufCanvas = document.createElement('canvas');
+const bufCtx = bufCanvas.getContext('2d');
+
+// Lista de Paletas
+function buildPaletteList(filter = '') {
+  const list = document.getElementById('presetList');
+  list.innerHTML = '';
+  const q = filter.toLowerCase();
+  let lastCat = '';
+
+  PALETTES.forEach(p => {
+    if (q && !p.name.toLowerCase().includes(q) && !p.cat.toLowerCase().includes(q)) return;
+    if (p.cat !== lastCat) {
+      const c = document.createElement('div');
+      c.className = 'cat';
+      c.textContent = p.cat;
+      list.appendChild(c);
+      lastCat = p.cat;
+    }
+    const lbl = document.createElement('label');
+    const rad = document.createElement('input');
+    rad.type = 'radio';
+    rad.name = 'pal';
+    rad.checked = (!useCustom && selectedPal.id === p.id);
+    rad.onchange = () => { selectedPal = p; useCustom = false; if (sourceType === 'image') renderFrame(); };
+    lbl.appendChild(rad);
+    lbl.appendChild(document.createTextNode(p.name));
+    list.appendChild(lbl);
+  });
+}
+document.getElementById('palSearch').oninput = e => buildPaletteList(e.target.value);
+
+// Paleta Custom
+function updateSwatches() {
+  const box = document.getElementById('customSwatches');
+  box.innerHTML = '';
+  customColors.forEach((c, i) => {
+    const d = document.createElement('div');
+    d.className = 'swatch';
+    d.style.background = c;
+    d.title = 'Clique para remover ' + c;
+    d.onclick = () => { customColors.splice(i, 1); updateSwatches(); if (useCustom && sourceType === 'image') renderFrame(); };
+    box.appendChild(d);
+  });
+}
+document.getElementById('addColorBtn').onclick = () => {
+  const c = document.getElementById('colorPicker').value;
+  if (!customColors.includes(c)) { customColors.push(c); updateSwatches(); }
+};
+document.getElementById('useCustomBtn').onclick = () => {
+  if (!customColors.length) return alert('Adicione pelo menos 1 cor!');
+  useCustom = true;
+  document.querySelectorAll('input[name=pal]').forEach(r => r.checked = false);
+  if (sourceType === 'image') renderFrame();
+};
+document.getElementById('clearCustomBtn').onclick = () => {
+  customColors = []; useCustom = false; updateSwatches(); buildPaletteList();
+  if (sourceType === 'image') renderFrame();
+};
+
+// Sincronizar Bloco (Input e Slider)
+const blockSizeInput = document.getElementById('blockSize');
+const blockRangeInput = document.getElementById('blockRange');
+blockSizeInput.oninput = () => { blockRangeInput.value = blockSizeInput.value; if (sourceType === 'image') renderFrame(); };
+blockRangeInput.oninput = () => { blockSizeInput.value = blockRangeInput.value; if (sourceType === 'image') renderFrame(); };
+
+// Conta-gotas & Chroma Key
+document.getElementById('eyedropperBtn').onclick = function() {
+  pickingColor = !pickingColor;
+  this.classList.toggle('active', pickingColor);
+  document.getElementById('info').textContent = pickingColor
+    ? '💉 MODO CONTA-GOTAS: Clique em qualquer cor na tela para removê-la!'
+    : 'Conta-gotas desativado.';
+};
+
+canvas.onclick = e => {
+  if (!pickingColor || !sourceType) return;
+  const rect = canvas.getBoundingClientRect();
+  const x = Math.floor((e.clientX - rect.left) * (bufCanvas.width / rect.width));
+  const y = Math.floor((e.clientY - rect.top) * (bufCanvas.height / rect.height));
+  const px = bufCtx.getImageData(x, y, 1, 1).data;
+  const hex = '#' + [px[0], px[1], px[2]].map(v => v.toString(16).padStart(2, '0')).join('');
+  document.getElementById('bgKeyColor').value = hex;
+  document.getElementById('bgRemoveEnable').checked = true;
+  pickingColor = false;
+  document.getElementById('eyedropperBtn').classList.remove('active');
+  document.getElementById('info').textContent = '✨ Cor selecionada para remoção: ' + hex.toUpperCase();
+  if (sourceType === 'image') renderFrame();
+};
+
+document.getElementById('autoCornerBtn').onclick = () => {
+  if (!sourceType) return alert('Carregue uma imagem ou vídeo primeiro!');
+  const px = bufCtx.getImageData(0, 0, 1, 1).data;
+  const hex = '#' + [px[0], px[1], px[2]].map(v => v.toString(16).padStart(2, '0')).join('');
+  document.getElementById('bgKeyColor').value = hex;
+  document.getElementById('bgRemoveEnable').checked = true;
+  if (sourceType === 'image') renderFrame();
+};
+
+document.getElementById('bgTolerance').oninput = e => {
+  document.getElementById('tolVal').textContent = e.target.value;
+  if (document.getElementById('bgRemoveEnable').checked && sourceType === 'image') renderFrame();
+};
+
+['bgRemoveEnable', 'bgKeyColor', 'pixelMode', 'toonEnable', 'gridEnable'].forEach(id => {
+  document.getElementById(id).onchange = () => { if (sourceType === 'image') renderFrame(); };
+});
+
+// Auxiliares
+function hexToRgb(h) {
+  const n = parseInt(h.slice(1), 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+function closestColor(r, g, b, pal) {
+  let best = pal[0], minD = Infinity;
+  for (let i = 0; i < pal.length; i++) {
+    const c = pal[i];
+    const d = (r - c.r) ** 2 + (g - c.g) ** 2 + (b - c.b) ** 2;
+    if (d < minD) { minD = d; best = c; }
+  }
+  return best;
+}
+
+const BAYER2 = [[0, 2], [3, 1]];
+const BAYER4 = [
+  [0, 8, 2, 10],
+  [12, 4, 14, 6],
+  [3, 11, 1, 9],
+  [15, 7, 13, 5]
+];
+const ASCII_CHARS = ' .:-=+*#%@';
+
+// Captura o frame atual para bufCanvas
+function captureSourceToBuffer() {
+  if (sourceType === 'image' && origImg) {
+    bufCanvas.width = origImg.width;
+    bufCanvas.height = origImg.height;
+    bufCtx.drawImage(origImg, 0, 0);
+  } else if (sourceType === 'video' && video.readyState >= 2) {
+    bufCanvas.width = video.videoWidth;
+    bufCanvas.height = video.videoHeight;
+    bufCtx.drawImage(video, 0, 0);
+  } else if (sourceType === 'synth') {
+    const w = 320, h = 240;
+    bufCanvas.width = w; bufCanvas.height = h;
+    bufCtx.fillStyle = '#00ff00'; // Fundo verde para testar Chroma Key!
+    bufCtx.fillRect(0, 0, w, h);
+    const cx = w / 2 + Math.cos(synthTime * 2) * 55;
+    const cy = h / 2 + Math.sin(synthTime * 3) * 35;
+    bufCtx.fillStyle = '#ff3b30';
+    bufCtx.beginPath(); bufCtx.arc(cx, cy, 48, 0, Math.PI * 2); bufCtx.fill();
+    bufCtx.fillStyle = '#ffcc00';
+    bufCtx.beginPath(); bufCtx.arc(cx - 15, cy - 12, 9, 0, Math.PI * 2); bufCtx.fill();
+    bufCtx.beginPath(); bufCtx.arc(cx + 15, cy - 12, 9, 0, Math.PI * 2); bufCtx.fill();
+    bufCtx.fillStyle = '#ffffff';
+    bufCtx.fillRect(cx - 20, cy + 14, 40, 10);
+  }
+}
+
+// RENDERIZAÇÃO DO FRAME COM OS MODOS DE PIXELIZAÇÃO
+function renderFrame() {
+  if (!sourceType) return;
+  captureSourceToBuffer();
+  const w = bufCanvas.width, h = bufCanvas.height;
+  if (!w || !h) return;
+
+  const bs = Math.max(1, parseInt(blockSizeInput.value) || 8);
+  const mode = document.getElementById('pixelMode').value;
+  const rmBg = document.getElementById('bgRemoveEnable').checked;
+  const keyRgb = hexToRgb(document.getElementById('bgKeyColor').value);
+  const tolSq = (parseInt(document.getElementById('bgTolerance').value) * 2.2) ** 2;
+  const toon = document.getElementById('toonEnable').checked;
+  const showGrid = document.getElementById('gridEnable').checked;
+
+  let palRgb = null;
+  if (useCustom && customColors.length) palRgb = customColors.map(hexToRgb);
+  else if (selectedPal && selectedPal.colors) palRgb = selectedPal.colors.map(hexToRgb);
+
+  const src = bufCtx.getImageData(0, 0, w, h).data;
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w; canvas.height = h;
+    applyZoom();
+  }
+  ctx.clearRect(0, 0, w, h);
+
+  const cols = Math.ceil(w / bs);
+  const rows = Math.ceil(h / bs);
+  const grid = toon ? Array.from({ length: rows }, () => Array(cols).fill(null)) : null;
+
+  for (let gy = 0; gy < rows; gy++) {
+    for (let gx = 0; gx < cols; gx++) {
+      const bx = gx * bs, by = gy * bs;
+      let r = 0, g = 0, b = 0, a = 0, n = 0;
+
+      if (mode === 'center') {
+        const cx = Math.min(w - 1, bx + (bs >> 1));
+        const cy = Math.min(h - 1, by + (bs >> 1));
+        const i = (cy * w + cx) * 4;
+        r = src[i]; g = src[i+1]; b = src[i+2]; a = src[i+3];
+      } else if (mode === 'min' || mode === 'max') {
+        let bestL = mode === 'min' ? 9999 : -1;
+        const maxY = Math.min(by + bs, h), maxX = Math.min(bx + bs, w);
+        for (let y = by; y < maxY; y++) {
+          for (let x = bx; x < maxX; x++) {
+            const i = (y * w + x) * 4;
+            const lum = src[i] + src[i+1] + src[i+2];
+            if ((mode === 'min' && lum < bestL) || (mode === 'max' && lum > bestL)) {
+              bestL = lum; r = src[i]; g = src[i+1]; b = src[i+2]; a = src[i+3];
+            }
+          }
+        }
+      } else {
+        const maxY = Math.min(by + bs, h), maxX = Math.min(bx + bs, w);
+        for (let y = by; y < maxY; y++) {
+          for (let x = bx; x < maxX; x++) {
+            const i = (y * w + x) * 4;
+            r += src[i]; g += src[i+1]; b += src[i+2]; a += src[i+3]; n++;
+          }
+        }
+        r = Math.round(r / n); g = Math.round(g / n); b = Math.round(b / n); a = Math.round(a / n);
+      }
+
+      if (a < 128) continue;
+      if (rmBg) {
+        const distSq = (r - keyRgb.r) ** 2 + (g - keyRgb.g) ** 2 + (b - keyRgb.b) ** 2;
+        if (distSq <= tolSq) continue;
+      }
+
+      if (mode === 'bayer2') {
+        const m = (BAYER2[gy % 2][gx % 2] / 4 - 0.5) * 64;
+        r = Math.min(255, Math.max(0, r + m));
+        g = Math.min(255, Math.max(0, g + m));
+        b = Math.min(255, Math.max(0, b + m));
+      } else if (mode === 'bayer4') {
+        const m = (BAYER4[gy % 4][gx % 4] / 16 - 0.5) * 64;
+        r = Math.min(255, Math.max(0, r + m));
+        g = Math.min(255, Math.max(0, g + m));
+        b = Math.min(255, Math.max(0, b + m));
+      }
+
+      if (palRgb) {
+        const c = closestColor(r, g, b, palRgb);
+        r = c.r; g = c.g; b = c.b;
+      }
+
+      if (toon) grid[gy][gx] = { r, g, b };
+      const fill = `rgb(${r},${g},${b})`;
+      ctx.fillStyle = fill;
+
+      if (mode === 'circle') {
+        ctx.beginPath();
+        ctx.arc(bx + bs / 2, by + bs / 2, bs * 0.45, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (mode === 'halftone') {
+        const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        ctx.beginPath();
+        ctx.arc(bx + bs / 2, by + bs / 2, Math.max(1, bs * 0.5 * lum), 0, Math.PI * 2);
+        ctx.fill();
+      } else if (mode === 'diamond') {
+        ctx.beginPath();
+        ctx.moveTo(bx + bs / 2, by);
+        ctx.lineTo(bx + bs, by + bs / 2);
+        ctx.lineTo(bx + bs / 2, by + bs);
+        ctx.lineTo(bx, by + bs / 2);
+        ctx.closePath();
+        ctx.fill();
+      } else if (mode === 'lego') {
+        ctx.fillRect(bx, by, bs, bs);
+        ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+        ctx.strokeRect(bx + 0.5, by + 0.5, bs - 1, bs - 1);
+        ctx.beginPath();
+        ctx.arc(bx + bs / 2, by + bs / 2, bs * 0.28, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,255,255,0.28)';
+        ctx.fill();
+      } else if (mode === 'cross') {
+        ctx.strokeStyle = fill;
+        ctx.lineWidth = Math.max(1.5, bs * 0.22);
+        ctx.beginPath();
+        ctx.moveTo(bx + 1, by + 1); ctx.lineTo(bx + bs - 1, by + bs - 1);
+        ctx.moveTo(bx + bs - 1, by + 1); ctx.lineTo(bx + 1, by + bs - 1);
+        ctx.stroke();
+      } else if (mode === 'tile3d') {
+        ctx.fillRect(bx, by, bs, bs);
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.fillRect(bx, by, bs, Math.max(1, bs * 0.18));
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.fillRect(bx, by + bs * 0.82, bs, Math.max(1, bs * 0.18));
+      } else if (mode === 'crt') {
+        const sw = bs / 3;
+        ctx.fillStyle = `rgb(${r},0,0)`; ctx.fillRect(bx, by, sw, bs - 1);
+        ctx.fillStyle = `rgb(0,${g},0)`; ctx.fillRect(bx + sw, by, sw, bs - 1);
+        ctx.fillStyle = `rgb(0,0,${b})`; ctx.fillRect(bx + sw * 2, by, sw, bs - 1);
+      } else if (mode === 'scanline') {
+        ctx.fillRect(bx, by, bs, Math.max(1, bs * 0.72));
+      } else if (mode === 'ascii') {
+        const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        const ch = ASCII_CHARS[Math.min(ASCII_CHARS.length - 1, Math.floor(lum * ASCII_CHARS.length))];
+        ctx.font = `bold ${bs}px monospace`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(ch, bx + bs / 2, by + bs / 2);
+      } else {
+        ctx.fillRect(bx, by, bs, bs);
+      }
+
+      if (showGrid && bs >= 4) {
+        ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(bx + 0.5, by + 0.5, bs - 1, bs - 1);
+      }
+    }
+  }
+
+  // Contorno Preto Estilo Desenho
+  if (toon && grid) {
+    ctx.fillStyle = '#000000';
+    const thick = Math.max(1, Math.floor(bs * 0.2));
+    for (let gy = 0; gy < rows; gy++) {
+      for (let gx = 0; gx < cols; gx++) {
+        const c = grid[gy][gx];
+        if (!c) continue;
+        const bx = gx * bs, by = gy * bs;
+        const up = gy > 0 ? grid[gy - 1][gx] : null;
+        const left = gx > 0 ? grid[gy][gx - 1] : null;
+        if (!up || Math.abs(c.r - up.r) + Math.abs(c.g - up.g) + Math.abs(c.b - up.b) > 95) {
+          ctx.fillRect(bx, by, bs, thick);
+        }
+        if (!left || Math.abs(c.r - left.r) + Math.abs(c.g - left.g) + Math.abs(c.b - left.b) > 95) {
+          ctx.fillRect(bx, by, thick, bs);
+        }
+      }
+    }
+  }
+}
+
+function stopLoop() {
+  if (animId) { cancelAnimationFrame(animId); animId = null; }
+  video.pause();
+}
+
+function startVideoLoop() {
+  stopLoop();
+  function step() {
+    if (sourceType === 'video') {
+      if (!video.paused && !video.ended) {
+        renderFrame();
+        document.getElementById('seekBar').value = video.currentTime;
+        document.getElementById('timeLabel').textContent = `${video.currentTime.toFixed(1)}s / ${video.duration.toFixed(1)}s`;
+      }
+      animId = requestAnimationFrame(step);
+    } else if (sourceType === 'synth') {
+      synthTime += 0.03;
+      renderFrame();
+      animId = requestAnimationFrame(step);
+    }
+  }
+  animId = requestAnimationFrame(step);
+}
+
+document.getElementById('renderBtn').onclick = renderFrame;
+
+// Upload de Imagem ou Vídeo Curto (máx 25s)
+document.getElementById('fileInput').onchange = e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  stopLoop();
+
+  if (f.type.startsWith('video/')) {
+    const url = URL.createObjectURL(f);
+    video.src = url;
+    video.onloadedmetadata = () => {
+      if (video.duration > 25.5) {
+        alert(`Vídeo muito longo (${video.duration.toFixed(1)}s)! O máximo permitido é 25 segundos.`);
+        video.src = '';
+        return;
+      }
+      sourceType = 'video';
+      document.getElementById('videoBar').style.display = 'flex';
+      document.getElementById('recVideoBtn').style.display = 'block';
+      document.getElementById('seekBar').max = video.duration;
+      video.loop = document.getElementById('loopVid').checked;
+      video.play();
+      startVideoLoop();
+      document.getElementById('info').textContent = `🎬 Vídeo carregado: ${video.videoWidth}×${video.videoHeight}px (${video.duration.toFixed(1)}s)`;
+    };
+  } else {
+    const r = new FileReader();
+    r.onload = ev => {
+      const img = new Image();
+      img.onload = () => {
+        sourceType = 'image';
+        origImg = img;
+        document.getElementById('videoBar').style.display = 'none';
+        document.getElementById('recVideoBtn').style.display = 'none';
+        renderFrame();
+        document.getElementById('info').textContent = `🖼️ Imagem carregada: ${img.width}×${img.height}px`;
+      };
+      img.src = ev.target.result;
+    };
+    r.readAsDataURL(f);
+  }
+};
+
+// Controles de Vídeo
+document.getElementById('playPauseBtn').onclick = function() {
+  if (video.paused) { video.play(); this.textContent = '⏸ Pausar'; }
+  else { video.pause(); this.textContent = '▶ Play'; }
+};
+document.getElementById('restartVidBtn').onclick = () => { video.currentTime = 0; renderFrame(); };
+document.getElementById('seekBar').oninput = e => { video.currentTime = parseFloat(e.target.value); renderFrame(); };
+document.getElementById('loopVid').onchange = e => { video.loop = e.target.checked; };
+
+// Botões de Teste
+document.getElementById('sampleImgBtn').onclick = () => {
+  stopLoop();
+  const c = document.createElement('canvas');
+  c.width = 320; c.height = 240;
+  const g = c.getContext('2d');
+  g.fillStyle = '#00ff00'; g.fillRect(0, 0, 320, 240);
+  g.fillStyle = '#ff3b30'; g.beginPath(); g.arc(160, 120, 75, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#ffcc00'; g.beginPath(); g.arc(135, 100, 14, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.arc(185, 100, 14, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#ffffff'; g.fillRect(125, 145, 70, 18);
+  const img = new Image();
+  img.onload = () => {
+    sourceType = 'image'; origImg = img;
+    document.getElementById('videoBar').style.display = 'none';
+    document.getElementById('recVideoBtn').style.display = 'none';
+    renderFrame();
+  };
+  img.src = c.toDataURL();
+};
+
+document.getElementById('sampleVidBtn').onclick = () => {
+  sourceType = 'synth';
+  document.getElementById('videoBar').style.display = 'none';
+  document.getElementById('recVideoBtn').style.display = 'block';
+  startVideoLoop();
+  document.getElementById('info').textContent = '🎬 Animação Teste rodando! Experimente mudar o Modo de Pixelização, Paletas ou ativar o Chroma Key.';
+};
+
+// Zoom
+function applyZoom() {
+  canvas.style.width = (canvas.width * zoom) + 'px';
+  canvas.style.height = (canvas.height * zoom) + 'px';
+}
+document.getElementById('zoom').oninput = e => {
+  zoom = e.target.value / 100;
+  document.getElementById('zoomVal').textContent = e.target.value + '%';
+  applyZoom();
+};
+
+// Salvar Imagem / Frame
+document.getElementById('saveBtn').onclick = () => {
+  if (!sourceType) return alert('Carregue uma imagem ou vídeo primeiro!');
+  const fmt = document.getElementById('fmt').value;
+  const name = (document.getElementById('filename').value || 'pixel_art').replace(/[^a-z0-9_\-]/gi, '_');
+  const bs = Math.max(1, parseInt(blockSizeInput.value) || 8);
+
+  const out = document.createElement('canvas');
+  if (document.getElementById('saveExactSize').checked) {
+    out.width = canvas.width; out.height = canvas.height;
+    out.getContext('2d').drawImage(canvas, 0, 0);
+  } else {
+    out.width = Math.ceil(canvas.width / bs);
+    out.height = Math.ceil(canvas.height / bs);
+    const octx = out.getContext('2d');
+    octx.imageSmoothingEnabled = false;
+    octx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, out.width, out.height);
+  }
+  const a = document.createElement('a');
+  a.download = `${name}.${fmt}`;
+  a.href = out.toDataURL(fmt === 'jpg' ? 'image/jpeg' : 'image/png', 0.92);
+  a.click();
+};
+
+// Gravar Vídeo (.webm)
+let recorder = null, chunks = [];
+document.getElementById('recVideoBtn').onclick = function() {
+  if (recorder && recorder.state === 'recording') {
+    recorder.stop();
+    return;
+  }
+  const stream = canvas.captureStream(30);
+  chunks = [];
+  recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+  recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+  recorder.onstop = () => {
+    const blob = new Blob(chunks, { type: 'video/webm' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (document.getElementById('filename').value || 'pixel_video') + '.webm';
+    a.click();
+    this.textContent = '⏺ GRAVAR VÍDEO (.WEBM)';
+    this.classList.remove('recording');
+    document.getElementById('info').textContent = '💾 Vídeo pixelizado salvo com sucesso!';
+  };
+
+  if (sourceType === 'video') {
+    video.loop = false;
+    video.currentTime = 0;
+    video.play();
+    video.onended = () => { if (recorder && recorder.state === 'recording') recorder.stop(); video.loop = document.getElementById('loopVid').checked; };
+  }
+
+  recorder.start();
+  this.textContent = '⏹ PARAR E BAIXAR VÍDEO';
+  this.classList.add('recording');
+  document.getElementById('info').textContent = '🔴 Gravando vídeo pixelizado... Clique novamente para parar e baixar.';
+};
+
+buildPaletteList();
+</script>
+</body>
+</html>
