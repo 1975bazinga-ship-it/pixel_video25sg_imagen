@@ -54,7 +54,7 @@
   }
 
   function setCanvasSize(w, h) {
-    const maxDim = 960;
+    const maxDim = 960; // limite apenas para preview
     let nw = w || 480, nh = h || 320;
     if (nw > maxDim || nh > maxDim) { const r = Math.min(maxDim/nw, maxDim/nh); nw = Math.round(nw*r); nh = Math.round(nh*r); }
     if (mainCanvas.width !== nw || mainCanvas.height !== nh) {
@@ -94,6 +94,46 @@
     } else return;
     const imgData = offCtx.getImageData(0, 0, w, h).data;
     window.EstiloRenderer.renderizar(ctx, imgData, w, h, getOptions());
+  }
+
+  // ===== RENDER EM ALTA RESOLUÇÃO (download) =====
+  function renderFrameFullRes() {
+    let W, H;
+    if (mediaType === "image" && currentImg) {
+      W = currentImg.naturalWidth || currentImg.width;
+      H = currentImg.naturalHeight || currentImg.height;
+    } else if (mediaType === "video") {
+      W = videoEl.videoWidth || mainCanvas.width;
+      H = videoEl.videoHeight || mainCanvas.height;
+    } else {
+      W = mainCanvas.width;
+      H = mainCanvas.height;
+    }
+
+    const fullCanvas = document.createElement("canvas");
+    fullCanvas.width = W;
+    fullCanvas.height = H;
+    const fullCtx = fullCanvas.getContext("2d", { willReadFrequently: true });
+
+    const fullOffCanvas = document.createElement("canvas");
+    fullOffCanvas.width = W;
+    fullOffCanvas.height = H;
+    const fullOffCtx = fullOffCanvas.getContext("2d", { willReadFrequently: true });
+
+    if (mediaType === "image" && currentImg) {
+      fullOffCtx.clearRect(0, 0, W, H);
+      fullOffCtx.drawImage(currentImg, 0, 0, W, H);
+    } else if (mediaType === "video") {
+      fullOffCtx.clearRect(0, 0, W, H);
+      fullOffCtx.drawImage(videoEl, 0, 0, W, H);
+    } else if (mediaType === "synth") {
+      desenharAnimacaoTeste(fullOffCtx, W, H, synthTime);
+    }
+
+    const imgData = fullOffCtx.getImageData(0, 0, W, H).data;
+    window.EstiloRenderer.renderizar(fullCtx, imgData, W, H, getOptions());
+
+    return fullCanvas;
   }
 
   function startLoop() {
@@ -228,13 +268,26 @@
     renderFrame();
   });
 
+  // ===== DOWNLOAD EM TAMANHO ORIGINAL =====
   document.getElementById("btnDownloadImg").addEventListener("click", () => {
     const fmt = document.getElementById("exportFormat").value;
     const name = document.getElementById("fileName").value.trim() || "pixel_art";
+    let canvasToExport = mainCanvas;
+
+    if (mediaType === "image" || mediaType === "video") {
+      try {
+        canvasToExport = renderFrameFullRes();
+      } catch (err) {
+        console.warn("Falha ao gerar alta resolução, usando canvas atual:", err);
+        canvasToExport = mainCanvas;
+      }
+    }
+
     const link = document.createElement("a");
     link.download = `${name}.${fmt === "jpeg" ? "jpg" : "png"}`;
-    link.href = mainCanvas.toDataURL(`image/${fmt}`, 0.92);
+    link.href = canvasToExport.toDataURL(`image/${fmt}`, 0.92);
     link.click();
+    statusBadge.textContent = `Exportado ${canvasToExport.width}x${canvasToExport.height}`;
   });
 
   const btnRecord = document.getElementById("btnRecordVideo");
@@ -257,7 +310,7 @@
     statusBadge.textContent = "Gravando vídeo...";
   });
 
-  // ===== EXPORTAR SEQUÊNCIA PNG EM ZIP =====
+  // ===== EXPORTAR SEQUÊNCIA PNG EM ZIP (TAMANHO ORIGINAL) =====
   document.getElementById("btnExportZip").addEventListener("click", async () => {
     if (mediaType === "none") { alert("Carregue uma imagem ou vídeo primeiro!"); return; }
     if (typeof JSZip === "undefined") { alert("JSZip não carregado. Verifique jszip.min.js."); return; }
@@ -276,7 +329,6 @@
     progressBar.classList.add("active"); progressFill.style.width = "0%";
     zipStatus.textContent = `0 / ${totalFrames} frames`;
 
-    const w = mainCanvas.width, h = mainCanvas.height;
     const opts = getOptions();
     const savedTime = synthTime, savedVidTime = videoEl.currentTime, wasPlaying = isPlaying;
     const savedPaused = videoEl.paused;
@@ -285,8 +337,10 @@
     try {
       for (let i = 0; i < totalFrames; i++) {
         const t = i / fps;
+        let frameCanvas;
+
         if (mediaType === "image" && currentImg) {
-          offCtx.clearRect(0,0,w,h); offCtx.drawImage(currentImg,0,0,w,h);
+          frameCanvas = renderFrameFullRes();
         } else if (mediaType === "video") {
           await new Promise((resolve) => {
             const target = Math.min(t, videoEl.duration || t);
@@ -296,19 +350,18 @@
             videoEl.addEventListener("seeked", onSeeked);
             setTimeout(resolve, 500);
           });
-          offCtx.clearRect(0,0,w,h); offCtx.drawImage(videoEl,0,0,w,h);
+          frameCanvas = renderFrameFullRes();
         } else if (mediaType === "synth") {
-          desenharAnimacaoTeste(offCtx, w, h, t);
+          frameCanvas = renderFrameFullRes();
         }
-        const imgData = offCtx.getImageData(0,0,w,h).data;
-        window.EstiloRenderer.renderizar(ctx, imgData, w, h, opts);
-        const dataUrl = mainCanvas.toDataURL("image/png");
+
+        const dataUrl = frameCanvas.toDataURL("image/png");
         const base64 = dataUrl.split(",")[1];
         zip.file(`frame_${String(i).padStart(4,"0")}.png`, base64, { base64: true });
         const pct = ((i+1)/totalFrames)*100;
         progressFill.style.width = `${pct}%`;
-        zipStatus.textContent = `${i+1} / ${totalFrames} frames`;
-        if (i % 5 === 0) await new Promise(r => setTimeout(r, 0));
+        zipStatus.textContent = `${i+1} / ${totalFrames} frames (${frameCanvas.width}x${frameCanvas.height})`;
+        if (i % 3 === 0) await new Promise(r => setTimeout(r, 0));
       }
       zipStatus.textContent = "Compactando .zip...";
       await new Promise(r => setTimeout(r, 50));
@@ -343,7 +396,7 @@
 
   document.getElementById("btnExportGif").addEventListener("click", async () => {
     if (mediaType === "none") { alert("Carregue uma imagem ou vídeo primeiro!"); return; }
-    if (typeof GIF === "undefined") { alert("gif.js não carregado. Verifique o arquivo gif.js."); return; }
+    if (typeof GIF === "undefined") { alert("gif.js não carregado."); return; }
 
     const fps = parseInt(document.getElementById("rangeGifFps").value, 10);
     const dur = parseInt(document.getElementById("rangeGifDur").value, 10);
@@ -362,13 +415,15 @@
     progressFill.style.width = "0%";
     gifStatus.textContent = `0 / ${totalFrames} frames`;
 
-    const w = mainCanvas.width, h = mainCanvas.height;
     const opts = getOptions();
     const savedTime = synthTime;
     const savedVidTime = videoEl.currentTime;
     const wasPlaying = isPlaying;
     const wasPaused = videoEl.paused;
     videoEl.pause();
+
+    // Tamanho do GIF: usa o canvas do preview (GIFs gigantes ficam pesados)
+    const w = mainCanvas.width, h = mainCanvas.height;
 
     const workerScript = (typeof window.GIF_WORKER_SCRIPT !== "undefined")
       ? window.GIF_WORKER_SCRIPT
