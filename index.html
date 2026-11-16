@@ -21,6 +21,7 @@
     button.primary { background: #00d4aa; color: #091512; border-color: #00ffcc; }
     button.primary:hover { background: #00ffcc; }
     button.danger { background: #e11d48; border-color: #fb7185; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
     main { flex: 1; display: flex; flex-direction: column; background: #0d0d11; }
     header { background: #181820; padding: 10px 16px; border-bottom: 1px solid #2e2e3a; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
     .canvas-area { flex: 1; overflow: auto; display: flex; align-items: center; justify-content: center; padding: 20px; background-image: linear-gradient(45deg, #16161d 25%, transparent 25%), linear-gradient(-45deg, #16161d 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #16161d 75%), linear-gradient(-45deg, transparent 75%, #16161d 75%); background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0; }
@@ -105,6 +106,21 @@
       <div class="progress-bar" id="zipProgress"><div></div></div>
       <span id="zipStatus" style="font-size: 11px; color: #a1a1aa;"></span>
     </section>
+
+    <section>
+      <h2>🎞️ Exportar GIF Animado</h2>
+      <label>FPS do GIF: <strong id="lblGifFps">10</strong></label>
+      <input type="range" id="rangeGifFps" min="2" max="30" value="10">
+      <label>Duração (s): <strong id="lblGifDur">3</strong></label>
+      <input type="range" id="rangeGifDur" min="1" max="20" value="3">
+      <label>Qualidade: <strong id="lblGifQual">10</strong></label>
+      <input type="range" id="rangeGifQual" min="1" max="30" value="10">
+      <div class="row">
+        <button class="primary" id="btnExportGif" style="flex:1">🎞️ Exportar GIF</button>
+      </div>
+      <div class="progress-bar" id="gifProgress"><div></div></div>
+      <span id="gifStatus" style="font-size: 11px; color: #a1a1aa;"></span>
+    </section>
   </aside>
 
   <main>
@@ -139,10 +155,15 @@
 
   <video id="hiddenVideo" playsinline muted loop crossOrigin="anonymous" style="display:none"></video>
 
-  <!-- JSZip para exportar sequência PNG zipada -->
+  <!-- Bibliotecas -->
   <script src="jszip.min.js"></script>
+  <script src="gif.js"></script>
   <script src="paletas.js"></script>
   <script src="estilos.js"></script>
   <script src="motor.js"></script>
+  <script>
+    // Aponta para o worker do gif.js (ajuste se usar CDN)
+    window.GIF_WORKER_SCRIPT = "gif.worker.js";
+  </script>
 </body>
 </html>
