@@ -53,8 +53,8 @@
     <section>
       <h2>🧩 1. Modo de Pixelização (<span id="estiloCount">0</span>)</h2>
       <select id="selectEstilo"></select>
-      <label>Bloco (px): <strong id="lblBloco">6</strong></label>
-      <input type="range" id="rangeBloco" min="2" max="40" value="6">
+      <label>Bloco (px): <strong id="lblBloco">2</strong></label>
+      <input type="range" id="rangeBloco" min="1" max="40" value="2">
       <div class="row">
         <label><input type="checkbox" id="chkGrade"> Grade</label>
         <label><input type="checkbox" id="chkContorno"> Contorno Preto</label>
@@ -98,7 +98,7 @@
       <label>FPS da Sequência: <strong id="lblFps">12</strong></label>
       <input type="range" id="rangeFps" min="1" max="30" value="12">
       <label>Duração (s): <strong id="lblDur">3</strong></label>
-      <input type="range" id="rangeDur" min="1" max="20" value="3">
+      <input type="range" id="rangeDur" min="1" max="30" value="3">
       <div class="row">
         <button class="primary" id="btnExportZip" style="flex:1">📦 Exportar .ZIP (PNG)</button>
       </div>
@@ -140,7 +140,7 @@
   <video id="hiddenVideo" playsinline muted loop crossOrigin="anonymous" style="display:none"></video>
 
   <!-- JSZip para exportar sequência PNG zipada -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="jszip.min.js"></script>
   <script src="paletas.js"></script>
   <script src="estilos.js"></script>
   <script src="motor.js"></script>
