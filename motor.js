@@ -120,7 +120,7 @@
   }
 
   // ============================================================================
-  // RENDER RETRÔ COM CONTORNO FORÇA AJUSTÁVEL
+  // RENDER RETRÔ (preview) — com contorno força
   // ============================================================================
   function renderRetroFrame() {
     if (state.layersActive) return;
@@ -143,24 +143,18 @@
     const imgData = offCtx.getImageData(0, 0, w, h).data;
     const opts = getGlobalOptions();
 
-    // Se NÃO está ativo o contorno, chama o EstiloRenderer normalmente
     if (!state.contorno) {
       window.EstiloRenderer.renderizar(ctx, imgData, w, h, opts);
       return;
     }
 
-    // CONTORNO ATIVO: renderiza sem contorno e adiciona contorno com força
     const optsSemContorno = { ...opts, contorno: false };
     window.EstiloRenderer.renderizar(ctx, imgData, w, h, optsSemContorno);
 
-    // Aplica contorno com força ajustável (0-255)
-    // Vamos usar o buffer ORIGINAL da imagem (antes do estilo) para detectar bordas
     const px = state.bloco;
     const cols = Math.ceil(w / px), rows = Math.ceil(h / px);
-    const cor = window.PaletaHelper.parseHex;
     const factor = (259 * (state.contraste + 255)) / (255 * (259 - state.contraste));
 
-    // Pré-calcula a cor média de cada bloco (como no renderizador original)
     const gridLuma = new Float32Array(rows * cols);
     for (let gy = 0; gy < rows; gy++) {
       for (let gx = 0; gx < cols; gx++) {
@@ -172,7 +166,6 @@
             const i = (y * w + x) * 4;
             const a = imgData[i+3];
             if (a < 20) continue;
-            // luma + brilho/contraste
             let r = factor * (imgData[i] - 128) + 128 + state.brilho;
             let g = factor * (imgData[i+1] - 128) + 128 + state.brilho;
             let b = factor * (imgData[i+2] - 128) + 128 + state.brilho;
@@ -184,13 +177,7 @@
       }
     }
 
-    // Aplica contorno: 0 = nunca, 255 = sempre
-    // A "força" controla o quão sensível é: quanto maior a força, mais fácil de ser marcado como contorno
-    const forca = state.contornoForca; // 0..255
-    // Threshold dinâmico: se forca=0 → nunca; forca=255 → sempre
-    // Usamos a diferença de luma entre blocos vizinhos
-    const threshold = 255 - forca;
-
+    const threshold = 255 - state.contornoForca;
     ctx.fillStyle = "#08080a";
 
     for (let gy = 0; gy < rows; gy++) {
@@ -198,8 +185,6 @@
         const idx = gy * cols + gx;
         const luma = gridLuma[idx];
         if (luma < 0) continue;
-
-        // Verifica vizinhos (topo e esquerda)
         let isEdge = false;
         if (gx > 0) {
           const leftLuma = gridLuma[idx - 1];
@@ -209,7 +194,6 @@
           const topLuma = gridLuma[idx - cols];
           if (topLuma < 0 || Math.abs(luma - topLuma) > threshold) isEdge = true;
         }
-
         if (isEdge) {
           const startX = gx * px, startY = gy * px;
           const bw = Math.min(px, w - startX), bh = Math.min(px, h - startY);
@@ -219,23 +203,104 @@
     }
   }
 
+  // ============================================================================
+  // RENDER RETRÔ EM ALTA RESOLUÇÃO (download)
+  // ============================================================================
   function renderRetroFrameFullRes() {
     let W, H;
-    if (state.mediaType === "image" && state.currentImg) { W = state.currentImg.naturalWidth || state.currentImg.width; H = state.currentImg.naturalHeight || state.currentImg.height; }
-    else if (state.mediaType === "video") { W = videoEl.videoWidth || mainCanvas.width; H = videoEl.videoHeight || mainCanvas.height; }
-    else { W = mainCanvas.width; H = mainCanvas.height; }
+    if (state.mediaType === "image" && state.currentImg) {
+      W = state.currentImg.naturalWidth || state.currentImg.width;
+      H = state.currentImg.naturalHeight || state.currentImg.height;
+    } else if (state.mediaType === "video") {
+      W = videoEl.videoWidth || mainCanvas.width;
+      H = videoEl.videoHeight || mainCanvas.height;
+    } else {
+      W = mainCanvas.width;
+      H = mainCanvas.height;
+    }
+
     const fullCanvas = document.createElement("canvas");
-    fullCanvas.width = W; fullCanvas.height = H;
+    fullCanvas.width = W;
+    fullCanvas.height = H;
     const fullCtx = fullCanvas.getContext("2d", { willReadFrequently: true });
+
     const fullOffCanvas = document.createElement("canvas");
-    fullOffCanvas.width = W; fullOffCanvas.height = H;
+    fullOffCanvas.width = W;
+    fullOffCanvas.height = H;
     const fullOffCtx = fullOffCanvas.getContext("2d", { willReadFrequently: true });
-    if (state.mediaType === "image" && state.currentImg) { fullOffCtx.clearRect(0,0,W,H); fullOffCtx.drawImage(state.currentImg,0,0,W,H); }
-    else if (state.mediaType === "video") { fullOffCtx.clearRect(0,0,W,H); fullOffCtx.drawImage(videoEl,0,0,W,H); }
-    else if (state.mediaType === "synth") { desenharAnimacaoTeste(fullOffCtx, W, H, state.synthTime); }
+
+    if (state.mediaType === "image" && state.currentImg) {
+      fullOffCtx.clearRect(0, 0, W, H);
+      fullOffCtx.drawImage(state.currentImg, 0, 0, W, H);
+    } else if (state.mediaType === "video") {
+      fullOffCtx.clearRect(0, 0, W, H);
+      fullOffCtx.drawImage(videoEl, 0, 0, W, H);
+    } else if (state.mediaType === "synth") {
+      desenharAnimacaoTeste(fullOffCtx, W, H, state.synthTime);
+    }
+
     const imgData = fullOffCtx.getImageData(0, 0, W, H).data;
     const opts = getGlobalOptions();
-    window.EstiloRenderer.renderizar(fullCtx, imgData, W, H, opts);
+
+    if (!state.contorno) {
+      window.EstiloRenderer.renderizar(fullCtx, imgData, W, H, opts);
+      return fullCanvas;
+    }
+
+    const optsSemContorno = { ...opts, contorno: false };
+    window.EstiloRenderer.renderizar(fullCtx, imgData, W, H, optsSemContorno);
+
+    const px = state.bloco;
+    const cols = Math.ceil(W / px), rows = Math.ceil(H / px);
+    const factor = (259 * (state.contraste + 255)) / (255 * (259 - state.contraste));
+
+    const gridLuma = new Float32Array(rows * cols);
+    for (let gy = 0; gy < rows; gy++) {
+      for (let gx = 0; gx < cols; gx++) {
+        const startX = gx * px, startY = gy * px;
+        const bw = Math.min(px, W - startX), bh = Math.min(px, H - startY);
+        let sum = 0, cnt = 0;
+        for (let y = startY; y < startY + bh; y++) {
+          for (let x = startX; x < startX + bw; x++) {
+            const i = (y * W + x) * 4;
+            const a = imgData[i + 3];
+            if (a < 20) continue;
+            let r = factor * (imgData[i] - 128) + 128 + state.brilho;
+            let g = factor * (imgData[i + 1] - 128) + 128 + state.brilho;
+            let b = factor * (imgData[i + 2] - 128) + 128 + state.brilho;
+            sum += 0.299 * r + 0.587 * g + 0.114 * b;
+            cnt++;
+          }
+        }
+        gridLuma[gy * cols + gx] = cnt > 0 ? sum / cnt : -1;
+      }
+    }
+
+    const threshold = 255 - state.contornoForca;
+    fullCtx.fillStyle = "#08080a";
+
+    for (let gy = 0; gy < rows; gy++) {
+      for (let gx = 0; gx < cols; gx++) {
+        const idx = gy * cols + gx;
+        const luma = gridLuma[idx];
+        if (luma < 0) continue;
+        let isEdge = false;
+        if (gx > 0) {
+          const leftLuma = gridLuma[idx - 1];
+          if (leftLuma < 0 || Math.abs(luma - leftLuma) > threshold) isEdge = true;
+        }
+        if (!isEdge && gy > 0) {
+          const topLuma = gridLuma[idx - cols];
+          if (topLuma < 0 || Math.abs(luma - topLuma) > threshold) isEdge = true;
+        }
+        if (isEdge) {
+          const startX = gx * px, startY = gy * px;
+          const bw = Math.min(px, W - startX), bh = Math.min(px, H - startY);
+          fullCtx.fillRect(startX, startY, bw, bh);
+        }
+      }
+    }
+
     return fullCanvas;
   }
 
@@ -438,6 +503,9 @@
     c.fillStyle = "#7f1d1d"; c.fillRect(102,298,52,4); c.fillRect(166,298,52,4);
   }
 
+  // ============================================================================
+  // RENDER 7 CAMADAS (preview)
+  // ============================================================================
   function renderLayersFrame() {
     const px = state.bloco;
 
@@ -578,7 +646,6 @@
           finalRgb = window.PaletaHelper.corMaisProxima(r, g, b, targetPalette);
         }
 
-        // Contorno com força ajustável
         let drawOutline = false;
         if (state.contorno && bx > 0 && by > 0) {
           const leftIdx = (sampleY * srcW + Math.max(0, sampleX - px)) * 4;
@@ -623,6 +690,182 @@
       document.getElementById("videoSeek").value = (videoEl.currentTime/videoEl.duration)*100;
       document.getElementById("videoTime").textContent = `${videoEl.currentTime.toFixed(1)}s / ${videoEl.duration.toFixed(1)}s`;
     }
+  }
+
+  // ============================================================================
+  // RENDER 7 CAMADAS EM ALTA RESOLUÇÃO (download)
+  // ============================================================================
+  function renderLayersFrameFullRes() {
+    let W = 480, H = 320;
+    if (state.mediaType === "image" && state.currentImg) {
+      W = state.currentImg.naturalWidth || state.currentImg.width;
+      H = state.currentImg.naturalHeight || state.currentImg.height;
+    } else if (state.mediaType === "video" && videoEl.videoWidth > 0) {
+      W = videoEl.videoWidth;
+      H = videoEl.videoHeight;
+    }
+
+    const fullCanvas = document.createElement("canvas");
+    fullCanvas.width = W;
+    fullCanvas.height = H;
+    const fullCtx = fullCanvas.getContext("2d", { willReadFrequently: true });
+
+    const fullOffCanvas = document.createElement("canvas");
+    fullOffCanvas.width = W;
+    fullOffCanvas.height = H;
+    const fullOffCtx = fullOffCanvas.getContext("2d", { willReadFrequently: true });
+
+    if (state.mediaType === "demo" || state.mediaType === "none") {
+      fullOffCtx.save();
+      const scale = Math.min(W / 320, H / 320);
+      fullOffCtx.translate((W - 320 * scale) / 2, (H - 320 * scale) / 2);
+      fullOffCtx.scale(scale, scale);
+      drawDemoCharacter(fullOffCtx, 320, 320);
+      fullOffCtx.restore();
+    } else if (state.mediaType === "image" && state.currentImg) {
+      fullOffCtx.clearRect(0, 0, W, H);
+      fullOffCtx.drawImage(state.currentImg, 0, 0, W, H);
+    } else if (state.mediaType === "video") {
+      fullOffCtx.clearRect(0, 0, W, H);
+      fullOffCtx.drawImage(videoEl, 0, 0, W, H);
+    }
+
+    const data = fullOffCtx.getImageData(0, 0, W, H).data;
+    const px = state.bloco;
+    const cols = Math.ceil(W / px), rows = Math.ceil(H / px);
+
+    const activeLayers = state.layers.map((l, idx) => ({ ...l, idx }))
+      .filter(l => l.enabled)
+      .map(l => ({
+        ...l,
+        targets: l.colors.filter(c => c.active).map(c => window.PaletaHelper.parseHex(c.hex)),
+        rgbPal: getPaletaRgb(l.palette)
+      }))
+      .filter(l => l.targets.length > 0);
+
+    const globalRgbPal = getActiveRgbPalette();
+
+    const BAYER2 = [[0, 2], [3, 1]];
+    const BAYER4 = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
+    const BAYER8 = [
+      [0,32,8,40,2,34,10,42],[48,16,56,24,50,18,58,26],
+      [12,44,4,36,14,46,6,38],[60,28,52,20,62,30,54,22],
+      [3,35,11,43,1,33,9,41],[51,19,59,27,49,17,57,25],
+      [15,47,7,39,13,45,5,37],[63,31,55,23,61,29,53,21]
+    ];
+
+    const factor = (259 * (state.contraste + 255)) / (255 * (259 - state.contraste));
+
+    fullCtx.clearRect(0, 0, W, H);
+    fullCtx.imageSmoothingEnabled = false;
+
+    for (let by = 0; by < rows; by++) {
+      for (let bx = 0; bx < cols; bx++) {
+        const startX = bx * px, startY = by * px;
+        const bw = Math.min(px, W - startX), bh = Math.min(px, H - startY);
+        const sampleX = Math.min(W - 1, startX + Math.floor(px / 2));
+        const sampleY = Math.min(H - 1, startY + Math.floor(px / 2));
+        const centerIdx = (sampleY * W + sampleX) * 4;
+        const cR = data[centerIdx], cG = data[centerIdx + 1], cB = data[centerIdx + 2];
+
+        let sumR = 0, sumG = 0, sumB = 0, sumA = 0, count = 0;
+        for (let y = startY; y < startY + bh; y++) {
+          for (let x = startX; x < startX + bw; x++) {
+            const i = (y * W + x) * 4;
+            sumR += data[i]; sumG += data[i + 1]; sumB += data[i + 2]; sumA += data[i + 3];
+            count++;
+          }
+        }
+        let r = sumR / count, g = sumG / count, b = sumB / count;
+        let a = sumA / count;
+        if (a < 20) continue;
+
+        if (state.chromaAtivo) {
+          const cr = window.PaletaHelper.parseHex(state.chromaHex);
+          const dist = Math.hypot(r - cr[0], g - cr[1], b - cr[2]);
+          if (dist <= state.chromaTol) continue;
+        }
+
+        let matchedLayer = null, bestDist = Infinity;
+        for (let i = 0; i < activeLayers.length; i++) {
+          const layer = activeLayers[i];
+          for (let t = 0; t < layer.targets.length; t++) {
+            const tg = layer.targets[t];
+            const dr = r - tg[0], dg = g - tg[1], db = b - tg[2];
+            const dist = Math.sqrt(dr * dr * 0.3 + dg * dg * 0.59 + db * db * 0.11);
+            if (dist <= layer.tolerance && dist < bestDist) {
+              bestDist = dist;
+              matchedLayer = layer;
+            }
+          }
+        }
+
+        const targetStyle = matchedLayer ? matchedLayer.style : state.estiloKey;
+        const targetPalette = matchedLayer ? matchedLayer.rgbPal : globalRgbPal;
+
+        if (targetStyle === "quadrado_centro") {
+          r = cR; g = cG; b = cB;
+        } else if (targetStyle === "erosao" || targetStyle === "dilatacao") {
+          let bestLuma = targetStyle === "erosao" ? Infinity : -1;
+          let bestRgb = [r, g, b];
+          for (let y = startY; y < startY + bh; y++) {
+            for (let x = startX; x < startX + bw; x++) {
+              const i = (y * W + x) * 4;
+              const luma = data[i] + data[i + 1] + data[i + 2];
+              if ((targetStyle === "erosao" && luma < bestLuma) || (targetStyle === "dilatacao" && luma > bestLuma)) {
+                bestLuma = luma;
+                bestRgb = [data[i], data[i + 1], data[i + 2]];
+              }
+            }
+          }
+          r = bestRgb[0]; g = bestRgb[1]; b = bestRgb[2];
+        }
+
+        r = Math.min(255, Math.max(0, factor * (r - 128) + 128 + state.brilho));
+        g = Math.min(255, Math.max(0, factor * (g - 128) + 128 + state.brilho));
+        b = Math.min(255, Math.max(0, factor * (b - 128) + 128 + state.brilho));
+
+        if (targetStyle === "bayer2") {
+          const t = (BAYER2[by % 2][bx % 2] / 4 - 0.5) * 64;
+          r = Math.min(255, Math.max(0, r + t)); g = Math.min(255, Math.max(0, g + t)); b = Math.min(255, Math.max(0, b + t));
+        } else if (targetStyle === "bayer4") {
+          const t = (BAYER4[by % 4][bx % 4] / 16 - 0.5) * 64;
+          r = Math.min(255, Math.max(0, r + t)); g = Math.min(255, Math.max(0, g + t)); b = Math.min(255, Math.max(0, b + t));
+        } else if (targetStyle === "bayer8") {
+          const t = (BAYER8[by % 8][bx % 8] / 64 - 0.5) * 64;
+          r = Math.min(255, Math.max(0, r + t)); g = Math.min(255, Math.max(0, g + t)); b = Math.min(255, Math.max(0, b + t));
+        }
+
+        let finalRgb = [r, g, b];
+        if (targetPalette && targetPalette.length > 0) {
+          finalRgb = window.PaletaHelper.corMaisProxima(r, g, b, targetPalette);
+        }
+
+        let drawOutline = false;
+        if (state.contorno && bx > 0 && by > 0) {
+          const leftIdx = (sampleY * W + Math.max(0, sampleX - px)) * 4;
+          const diff = Math.abs(r - data[leftIdx]) + Math.abs(g - data[leftIdx + 1]) + Math.abs(b - data[leftIdx + 2]);
+          const threshold = 255 - state.contornoForca;
+          if (diff > threshold) drawOutline = true;
+        }
+
+        if (drawOutline) {
+          fullCtx.fillStyle = "#08080a";
+          fullCtx.fillRect(startX, startY, bw, bh);
+          continue;
+        }
+
+        window.EstiloRenderer.desenharBloco(fullCtx, targetStyle, startX, startY, bw, bh, finalRgb, bx, by, px);
+
+        if (state.grade) {
+          fullCtx.strokeStyle = "rgba(0,0,0,0.35)";
+          fullCtx.lineWidth = 1;
+          fullCtx.strokeRect(startX + 0.5, startY + 0.5, bw - 1, bh - 1);
+        }
+      }
+    }
+
+    return fullCanvas;
   }
 
   function startLayersVideoLoop() {
@@ -730,7 +973,7 @@
           videoEl.addEventListener("seeked", onSeeked);
           setTimeout(resolve, 500);
         });
-        renderLayersFrame();
+        renderLayersFrameFullRes && renderLayersFrame();
         const dataUrl = mainCanvas.toDataURL("image/png");
         zip.file(`frame_${String(i).padStart(4,"0")}.png`, dataUrl.split(",")[1], { base64: true });
         fill.style.width = `${((i+1)/totalFrames)*100}%`;
@@ -958,13 +1201,25 @@
       mainCanvas.style.height = `${Math.round(mainCanvas.height*(z/100))}px`;
     });
 
+    // ========================================================================
+    // DOWNLOAD EM RESOLUÇÃO ORIGINAL (Retrô + 7 Camadas + Synth)
+    // ========================================================================
     document.getElementById("btnDownloadImg").addEventListener("click", () => {
       const fmt = document.getElementById("exportFormat").value;
       const name = document.getElementById("fileName").value.trim() || "pixel_art";
       let canvasToExport = mainCanvas;
-      if (!state.layersActive && (state.mediaType === "image" || state.mediaType === "video")) {
-        try { canvasToExport = renderRetroFrameFullRes(); } catch (err) { canvasToExport = mainCanvas; }
+
+      try {
+        if (state.layersActive) {
+          canvasToExport = renderLayersFrameFullRes();
+        } else if (state.mediaType === "image" || state.mediaType === "video" || state.mediaType === "synth") {
+          canvasToExport = renderRetroFrameFullRes();
+        }
+      } catch (err) {
+        console.warn("Falha ao gerar alta resolução, usando canvas atual:", err);
+        canvasToExport = mainCanvas;
       }
+
       const link = document.createElement("a");
       link.download = `${name}.${fmt === "jpeg" ? "jpg" : "png"}`;
       link.href = canvasToExport.toDataURL(`image/${fmt}`, 0.92);
