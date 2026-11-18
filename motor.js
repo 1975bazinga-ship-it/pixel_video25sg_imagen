@@ -1,4 +1,6 @@
 (() => {
+  "use strict";
+
   const mainCanvas = document.getElementById("mainCanvas");
   const ctx = mainCanvas.getContext("2d", { willReadFrequently: true });
   const offCanvas = document.createElement("canvas");
@@ -6,192 +8,236 @@
   const videoEl = document.getElementById("hiddenVideo");
   const fileInput = document.getElementById("fileInput");
   const statusBadge = document.getElementById("statusBadge");
+
   const selectPaleta = document.getElementById("selectPaleta");
   const palettePreview = document.getElementById("palettePreview");
   const selectEstilo = document.getElementById("selectEstilo");
+  const rangeZoom = document.getElementById("rangeZoom");
 
-  let mediaType = "none";
-  let currentImg = null;
-  let customPalette = ["#ff0055", "#00ffcc", "#ffff00", "#111122"];
-  let useCustomPalette = false;
-  let animFrameId = null;
-  let synthTime = 0;
-  let isPlaying = true;
-  let mediaRecorder = null;
-  let recordedChunks = [];
+  const state = {
+    mediaType: "none",
+    currentImg: null,
+    synthTime: 0,
+    isPlaying: true,
+    animFrameId: null,
+    layersAnimFrameId: null,
 
-  function initMenus() {
-    const keys = Object.keys(window.BANCO_PALETAS);
-    document.getElementById("paletaCount").textContent = keys.length;
-    keys.forEach(k => {
+    bloco: 2,
+    paletteKey: "original",
+    estiloKey: "quadrado_media",
+    grade: false,
+    contorno: false,
+    contornoForca: 50,
+    brilho: 0,
+    contraste: 0,
+    chromaAtivo: false,
+    chromaHex: "#00ff00",
+    chromaTol: 35,
+
+    customPalette: ["#ff0055", "#00ffcc", "#ffff00", "#111122"],
+    useCustomPalette: false,
+
+    layersActive: false,
+    showDebug: false,
+    activeEyedropper: null,
+    layers: [],
+
+    mediaRecorder: null,
+    recordedChunks: []
+  };
+
+  function getPaletasKeys() { return Object.keys(window.BANCO_PALETAS); }
+  function getPaletaNome(k) { return window.BANCO_PALETAS[k]?.nome || k; }
+  function getPaletaRgb(k) {
+    const p = window.BANCO_PALETAS[k];
+    return (p && p.cores) ? p.cores.map(h => window.PaletaHelper.parseHex(h)) : null;
+  }
+  function getEstilosIds() { return window.BANCO_ESTILOS.map(e => e.id); }
+  function getEstiloNome(id) {
+    const e = window.BANCO_ESTILOS.find(x => x.id === id);
+    return e ? e.nome : id;
+  }
+  function populatePaletaSelect(sel, selected) {
+    sel.innerHTML = "";
+    getPaletasKeys().forEach(k => {
       const opt = document.createElement("option");
       opt.value = k;
-      opt.textContent = window.BANCO_PALETAS[k].nome;
-      selectPaleta.appendChild(opt);
+      opt.textContent = getPaletaNome(k);
+      if (k === selected) opt.selected = true;
+      sel.appendChild(opt);
     });
-    document.getElementById("estiloCount").textContent = window.BANCO_ESTILOS.length;
-    window.BANCO_ESTILOS.forEach(est => {
+  }
+  function populateEstiloSelect(sel, selected) {
+    sel.innerHTML = "";
+    getEstilosIds().forEach(id => {
       const opt = document.createElement("option");
-      opt.value = est.id;
-      opt.textContent = est.nome;
-      selectEstilo.appendChild(opt);
+      opt.value = id;
+      opt.textContent = getEstiloNome(id);
+      if (id === selected) opt.selected = true;
+      sel.appendChild(opt);
     });
-    atualizarPreviewPaleta();
   }
-
   function getActiveRgbPalette() {
-    let hexList = null;
-    if (useCustomPalette && customPalette.length > 0) hexList = customPalette;
-    else { const p = window.BANCO_PALETAS[selectPaleta.value]; hexList = p ? p.cores : null; }
-    if (!hexList) return null;
-    return hexList.map(h => window.PaletaHelper.parseHex(h));
+    if (state.useCustomPalette && state.customPalette.length > 0)
+      return state.customPalette.map(h => window.PaletaHelper.parseHex(h));
+    return getPaletaRgb(state.paletteKey);
   }
-
   function atualizarPreviewPaleta() {
     palettePreview.innerHTML = "";
-    const hexList = useCustomPalette ? customPalette : (window.BANCO_PALETAS[selectPaleta.value]?.cores || ["#ff4444","#44ff44","#4444ff","#ffff44"]);
-    hexList.forEach(c => { const d = document.createElement("div"); d.style.background = c; palettePreview.appendChild(d); });
+    const hex = state.useCustomPalette
+      ? state.customPalette
+      : (window.BANCO_PALETAS[state.paletteKey]?.cores || ["#ff4444","#44ff44","#4444ff","#ffff44"]);
+    hex.forEach(c => { const d = document.createElement("div"); d.style.background = c; palettePreview.appendChild(d); });
   }
 
   function setCanvasSize(w, h) {
-    const maxDim = 960; // limite apenas para preview
+    const maxDim = 960;
     let nw = w || 480, nh = h || 320;
-    if (nw > maxDim || nh > maxDim) { const r = Math.min(maxDim/nw, maxDim/nh); nw = Math.round(nw*r); nh = Math.round(nh*r); }
+    if (nw > maxDim || nh > maxDim) {
+      const r = Math.min(maxDim/nw, maxDim/nh);
+      nw = Math.round(nw*r); nh = Math.round(nh*r);
+    }
     if (mainCanvas.width !== nw || mainCanvas.height !== nh) {
       mainCanvas.width = nw; mainCanvas.height = nh;
       offCanvas.width = nw; offCanvas.height = nh;
     }
   }
 
-  function getOptions() {
+  function getGlobalOptions() {
     return {
-      bloco: parseInt(document.getElementById("rangeBloco").value, 10),
-      estilo: selectEstilo.value,
+      bloco: state.bloco,
+      estilo: state.estiloKey,
       rgbPaleta: getActiveRgbPalette(),
-      grade: document.getElementById("chkGrade").checked,
-      contorno: document.getElementById("chkContorno").checked,
-      brilho: parseInt(document.getElementById("rangeBrilho").value, 10),
-      contraste: parseInt(document.getElementById("rangeContraste").value, 10),
-      chromaAtivo: document.getElementById("chkChroma").checked,
-      chromaRgb: window.PaletaHelper.parseHex(document.getElementById("chromaColor").value),
-      chromaTol: parseInt(document.getElementById("rangeTol").value, 10)
+      grade: state.grade,
+      contorno: state.contorno,
+      contornoForca: state.contornoForca,
+      brilho: state.brilho,
+      contraste: state.contraste,
+      chromaAtivo: state.chromaAtivo,
+      chromaRgb: window.PaletaHelper.parseHex(state.chromaHex),
+      chromaTol: state.chromaTol
     };
   }
 
-  function renderFrame() {
+  // ============================================================================
+  // RENDER RETRÔ COM CONTORNO FORÇA AJUSTÁVEL
+  // ============================================================================
+  function renderRetroFrame() {
+    if (state.layersActive) return;
     const w = mainCanvas.width, h = mainCanvas.height;
-    if (mediaType === "image" && currentImg) { offCtx.clearRect(0,0,w,h); offCtx.drawImage(currentImg,0,0,w,h); }
-    else if (mediaType === "video") {
+
+    if (state.mediaType === "image" && state.currentImg) {
+      offCtx.clearRect(0,0,w,h); offCtx.drawImage(state.currentImg,0,0,w,h);
+    } else if (state.mediaType === "video") {
       if (videoEl.readyState >= 2) { offCtx.clearRect(0,0,w,h); offCtx.drawImage(videoEl,0,0,w,h); }
       if (!isNaN(videoEl.duration) && videoEl.duration > 0) {
         document.getElementById("videoSeek").value = (videoEl.currentTime/videoEl.duration)*100;
         document.getElementById("videoTime").textContent = `${videoEl.currentTime.toFixed(1)}s / ${videoEl.duration.toFixed(1)}s`;
       }
-    } else if (mediaType === "synth") {
-      desenharAnimacaoTeste(offCtx, w, h, synthTime);
-      document.getElementById("videoTime").textContent = `${(synthTime%25).toFixed(1)}s / 25.0s`;
-      document.getElementById("videoSeek").value = ((synthTime%25)/25)*100;
+    } else if (state.mediaType === "synth") {
+      desenharAnimacaoTeste(offCtx, w, h, state.synthTime);
+      document.getElementById("videoTime").textContent = `${(state.synthTime%25).toFixed(1)}s / 25.0s`;
+      document.getElementById("videoSeek").value = ((state.synthTime%25)/25)*100;
     } else return;
+
     const imgData = offCtx.getImageData(0, 0, w, h).data;
-    window.EstiloRenderer.renderizar(ctx, imgData, w, h, getOptions());
+    const opts = getGlobalOptions();
+
+    // Se NÃO está ativo o contorno, chama o EstiloRenderer normalmente
+    if (!state.contorno) {
+      window.EstiloRenderer.renderizar(ctx, imgData, w, h, opts);
+      return;
+    }
+
+    // CONTORNO ATIVO: renderiza sem contorno e adiciona contorno com força
+    const optsSemContorno = { ...opts, contorno: false };
+    window.EstiloRenderer.renderizar(ctx, imgData, w, h, optsSemContorno);
+
+    // Aplica contorno com força ajustável (0-255)
+    // Vamos usar o buffer ORIGINAL da imagem (antes do estilo) para detectar bordas
+    const px = state.bloco;
+    const cols = Math.ceil(w / px), rows = Math.ceil(h / px);
+    const cor = window.PaletaHelper.parseHex;
+    const factor = (259 * (state.contraste + 255)) / (255 * (259 - state.contraste));
+
+    // Pré-calcula a cor média de cada bloco (como no renderizador original)
+    const gridLuma = new Float32Array(rows * cols);
+    for (let gy = 0; gy < rows; gy++) {
+      for (let gx = 0; gx < cols; gx++) {
+        const startX = gx * px, startY = gy * px;
+        const bw = Math.min(px, w - startX), bh = Math.min(px, h - startY);
+        let sum = 0, cnt = 0;
+        for (let y = startY; y < startY + bh; y++) {
+          for (let x = startX; x < startX + bw; x++) {
+            const i = (y * w + x) * 4;
+            const a = imgData[i+3];
+            if (a < 20) continue;
+            // luma + brilho/contraste
+            let r = factor * (imgData[i] - 128) + 128 + state.brilho;
+            let g = factor * (imgData[i+1] - 128) + 128 + state.brilho;
+            let b = factor * (imgData[i+2] - 128) + 128 + state.brilho;
+            sum += 0.299*r + 0.587*g + 0.114*b;
+            cnt++;
+          }
+        }
+        gridLuma[gy * cols + gx] = cnt > 0 ? sum / cnt : -1;
+      }
+    }
+
+    // Aplica contorno: 0 = nunca, 255 = sempre
+    // A "força" controla o quão sensível é: quanto maior a força, mais fácil de ser marcado como contorno
+    const forca = state.contornoForca; // 0..255
+    // Threshold dinâmico: se forca=0 → nunca; forca=255 → sempre
+    // Usamos a diferença de luma entre blocos vizinhos
+    const threshold = 255 - forca;
+
+    ctx.fillStyle = "#08080a";
+
+    for (let gy = 0; gy < rows; gy++) {
+      for (let gx = 0; gx < cols; gx++) {
+        const idx = gy * cols + gx;
+        const luma = gridLuma[idx];
+        if (luma < 0) continue;
+
+        // Verifica vizinhos (topo e esquerda)
+        let isEdge = false;
+        if (gx > 0) {
+          const leftLuma = gridLuma[idx - 1];
+          if (leftLuma < 0 || Math.abs(luma - leftLuma) > threshold) isEdge = true;
+        }
+        if (!isEdge && gy > 0) {
+          const topLuma = gridLuma[idx - cols];
+          if (topLuma < 0 || Math.abs(luma - topLuma) > threshold) isEdge = true;
+        }
+
+        if (isEdge) {
+          const startX = gx * px, startY = gy * px;
+          const bw = Math.min(px, w - startX), bh = Math.min(px, h - startY);
+          ctx.fillRect(startX, startY, bw, bh);
+        }
+      }
+    }
   }
 
-  // ===== RENDER EM ALTA RESOLUÇÃO (download) =====
-  function renderFrameFullRes() {
+  function renderRetroFrameFullRes() {
     let W, H;
-    if (mediaType === "image" && currentImg) {
-      W = currentImg.naturalWidth || currentImg.width;
-      H = currentImg.naturalHeight || currentImg.height;
-    } else if (mediaType === "video") {
-      W = videoEl.videoWidth || mainCanvas.width;
-      H = videoEl.videoHeight || mainCanvas.height;
-    } else {
-      W = mainCanvas.width;
-      H = mainCanvas.height;
-    }
-
+    if (state.mediaType === "image" && state.currentImg) { W = state.currentImg.naturalWidth || state.currentImg.width; H = state.currentImg.naturalHeight || state.currentImg.height; }
+    else if (state.mediaType === "video") { W = videoEl.videoWidth || mainCanvas.width; H = videoEl.videoHeight || mainCanvas.height; }
+    else { W = mainCanvas.width; H = mainCanvas.height; }
     const fullCanvas = document.createElement("canvas");
-    fullCanvas.width = W;
-    fullCanvas.height = H;
+    fullCanvas.width = W; fullCanvas.height = H;
     const fullCtx = fullCanvas.getContext("2d", { willReadFrequently: true });
-
     const fullOffCanvas = document.createElement("canvas");
-    fullOffCanvas.width = W;
-    fullOffCanvas.height = H;
+    fullOffCanvas.width = W; fullOffCanvas.height = H;
     const fullOffCtx = fullOffCanvas.getContext("2d", { willReadFrequently: true });
-
-    if (mediaType === "image" && currentImg) {
-      fullOffCtx.clearRect(0, 0, W, H);
-      fullOffCtx.drawImage(currentImg, 0, 0, W, H);
-    } else if (mediaType === "video") {
-      fullOffCtx.clearRect(0, 0, W, H);
-      fullOffCtx.drawImage(videoEl, 0, 0, W, H);
-    } else if (mediaType === "synth") {
-      desenharAnimacaoTeste(fullOffCtx, W, H, synthTime);
-    }
-
+    if (state.mediaType === "image" && state.currentImg) { fullOffCtx.clearRect(0,0,W,H); fullOffCtx.drawImage(state.currentImg,0,0,W,H); }
+    else if (state.mediaType === "video") { fullOffCtx.clearRect(0,0,W,H); fullOffCtx.drawImage(videoEl,0,0,W,H); }
+    else if (state.mediaType === "synth") { desenharAnimacaoTeste(fullOffCtx, W, H, state.synthTime); }
     const imgData = fullOffCtx.getImageData(0, 0, W, H).data;
-    window.EstiloRenderer.renderizar(fullCtx, imgData, W, H, getOptions());
-
+    const opts = getGlobalOptions();
+    window.EstiloRenderer.renderizar(fullCtx, imgData, W, H, opts);
     return fullCanvas;
   }
-
-  function startLoop() {
-    if (animFrameId) cancelAnimationFrame(animFrameId);
-    let lastTime = performance.now();
-    function loop(now) {
-      const dt = (now - lastTime)/1000; lastTime = now;
-      if (mediaType === "video") { if (!videoEl.paused && !videoEl.ended) renderFrame(); }
-      else if (mediaType === "synth" && isPlaying) { synthTime += dt; renderFrame(); }
-      animFrameId = requestAnimationFrame(loop);
-    }
-    animFrameId = requestAnimationFrame(loop);
-  }
-
-  function pararVideoAnterior() {
-    if (animFrameId) { cancelAnimationFrame(animFrameId); animFrameId = null; }
-    videoEl.pause(); videoEl.removeAttribute("src"); videoEl.load();
-  }
-
-  document.getElementById("btnUpload").addEventListener("click", () => fileInput.click());
-  fileInput.addEventListener("change", (e) => {
-    const file = e.target.files[0]; if (!file) return;
-    const url = URL.createObjectURL(file); pararVideoAnterior();
-    if (file.type.startsWith("video/")) {
-      mediaType = "video"; statusBadge.textContent = "Carregando vídeo...";
-      videoEl.src = url; videoEl.muted = document.getElementById("chkMute").checked; videoEl.loop = document.getElementById("chkLoop").checked;
-      videoEl.onloadeddata = () => {
-        setCanvasSize(videoEl.videoWidth, videoEl.videoHeight);
-        videoEl.currentTime = 0;
-        videoEl.play().then(() => { isPlaying = true; document.getElementById("btnPlayPause").textContent = "⏸ Pausar"; statusBadge.textContent = `Vídeo (${videoEl.videoWidth}x${videoEl.videoHeight})`; renderFrame(); startLoop(); })
-          .catch(() => { statusBadge.textContent = "Clique em Play"; renderFrame(); });
-      };
-      videoEl.onerror = () => { statusBadge.textContent = "Erro ao abrir vídeo"; };
-    } else if (file.type.startsWith("image/")) {
-      mediaType = "image";
-      const img = new Image();
-      img.onload = () => { currentImg = img; setCanvasSize(img.width, img.height); statusBadge.textContent = `Imagem (${img.width}x${img.height})`; renderFrame(); };
-      img.src = url;
-    }
-    fileInput.value = "";
-  });
-
-  document.getElementById("btnTestImg").addEventListener("click", () => {
-    pararVideoAnterior(); mediaType = "image"; setCanvasSize(480, 320);
-    const temp = document.createElement("canvas"); temp.width = 480; temp.height = 320;
-    const tctx = temp.getContext("2d");
-    const grad = tctx.createLinearGradient(0,0,0,320);
-    grad.addColorStop(0,"#1a0b2e"); grad.addColorStop(0.6,"#c71585"); grad.addColorStop(1,"#ff8c00");
-    tctx.fillStyle = grad; tctx.fillRect(0,0,480,320);
-    tctx.fillStyle = "#ffdd00"; tctx.beginPath(); tctx.arc(240,170,65,0,Math.PI*2); tctx.fill();
-    tctx.fillStyle = "#0d0618"; tctx.beginPath();
-    tctx.moveTo(0,250); tctx.lineTo(130,140); tctx.lineTo(260,250);
-    tctx.moveTo(190,250); tctx.lineTo(340,120); tctx.lineTo(480,250); tctx.fill();
-    tctx.fillRect(0,248,480,72);
-    const img = new Image();
-    img.onload = () => { currentImg = img; statusBadge.textContent = "Imagem Teste"; renderFrame(); };
-    img.src = temp.toDataURL();
-  });
 
   function desenharAnimacaoTeste(c, w, h, t) {
     c.fillStyle = "#00ff00"; c.fillRect(0,0,w,h);
@@ -203,316 +249,881 @@
     c.fillStyle = "#00ccff"; c.fillRect((t*120)%w, h-50, 70, 30);
   }
 
-  document.getElementById("btnTestVid").addEventListener("click", () => {
-    pararVideoAnterior(); mediaType = "synth"; synthTime = 0; isPlaying = true;
-    setCanvasSize(480, 320); document.getElementById("btnPlayPause").textContent = "⏸ Pausar";
-    statusBadge.textContent = "Animação Teste"; startLoop();
-  });
-
-  document.getElementById("btnPlayPause").addEventListener("click", () => {
-    if (mediaType === "video") {
-      if (videoEl.paused) { videoEl.play(); isPlaying = true; document.getElementById("btnPlayPause").textContent = "⏸ Pausar"; }
-      else { videoEl.pause(); isPlaying = false; document.getElementById("btnPlayPause").textContent = "▶ Continuar"; }
-    } else if (mediaType === "synth") {
-      isPlaying = !isPlaying; document.getElementById("btnPlayPause").textContent = isPlaying ? "⏸ Pausar" : "▶ Continuar";
+  function startRetroLoop() {
+    if (state.animFrameId) cancelAnimationFrame(state.animFrameId);
+    let lastTime = performance.now();
+    function loop(now) {
+      const dt = (now - lastTime)/1000; lastTime = now;
+      if (state.layersActive) return;
+      if (state.mediaType === "video") { if (!videoEl.paused && !videoEl.ended) renderRetroFrame(); }
+      else if (state.mediaType === "synth" && state.isPlaying) { state.synthTime += dt; renderRetroFrame(); }
+      state.animFrameId = requestAnimationFrame(loop);
     }
-  });
+    state.animFrameId = requestAnimationFrame(loop);
+  }
 
-  document.getElementById("btnRestart").addEventListener("click", () => {
-    if (mediaType === "video") { videoEl.currentTime = 0; renderFrame(); }
-    else if (mediaType === "synth") { synthTime = 0; renderFrame(); }
-  });
+  function pararVideoAnterior() {
+    if (state.animFrameId) { cancelAnimationFrame(state.animFrameId); state.animFrameId = null; }
+    if (state.layersAnimFrameId) { cancelAnimationFrame(state.layersAnimFrameId); state.layersAnimFrameId = null; }
+    videoEl.pause(); videoEl.removeAttribute("src"); videoEl.load();
+  }
 
-  document.getElementById("videoSeek").addEventListener("input", (e) => {
-    const pct = parseFloat(e.target.value)/100;
-    if (mediaType === "video" && videoEl.duration) { videoEl.currentTime = pct*videoEl.duration; renderFrame(); }
-    else if (mediaType === "synth") { synthTime = pct*25; renderFrame(); }
-  });
+  // ============================================================================
+  // 7 CAMADAS
+  // ============================================================================
+  const LAYER_DEFINITIONS = [
+    { id: "hair", name: "1. Cabelo", defaultColor: "#3b2314", defaultPalette: "hair_anime", defaultStyle: "bayer4" },
+    { id: "skin", name: "2. Pele", defaultColor: "#f2b894", defaultPalette: "skin_tones", defaultStyle: "flat" },
+    { id: "top", name: "3. Roupa Sup.", defaultColor: "#2563eb", defaultPalette: "pico8", defaultStyle: "bayer2" },
+    { id: "bottom", name: "4. Roupa Inf.", defaultColor: "#1e293b", defaultPalette: "endesga32", defaultStyle: "checker" },
+    { id: "shoes", name: "5. Sapatos", defaultColor: "#dc2626", defaultPalette: "sweetie16", defaultStyle: "bevel" },
+    { id: "eyes", name: "6. Olhos", defaultColor: "#10b981", defaultPalette: "cyberpunk", defaultStyle: "flat" },
+    { id: "accessory", name: "7. Acessório", defaultColor: "#eab308", defaultPalette: "gold_metal", defaultStyle: "bayer4" }
+  ];
 
-  document.getElementById("chkLoop").addEventListener("change", (e) => { videoEl.loop = e.target.checked; });
-  document.getElementById("chkMute").addEventListener("change", (e) => { videoEl.muted = e.target.checked; });
+  function initLayers() {
+    state.layers = LAYER_DEFINITIONS.map((def, idx) => ({
+      ...def,
+      enabled: idx < 3,
+      colors: [
+        { active: true, hex: def.defaultColor },
+        { active: false, hex: "#888888" },
+        { active: false, hex: "#888888" },
+        { active: false, hex: "#888888" }
+      ],
+      tolerance: 45,
+      palette: def.defaultPalette,
+      style: def.defaultStyle
+    }));
+    buildLayersUI();
+  }
 
-  [selectPaleta, selectEstilo, document.getElementById("chkGrade"), document.getElementById("chkContorno"), document.getElementById("chkChroma"), document.getElementById("chromaColor")].forEach(el => {
-    el.addEventListener("change", () => {
-      if (el === selectPaleta) { useCustomPalette = false; atualizarPreviewPaleta(); }
-      renderFrame();
+  function buildLayersUI() {
+    const container = document.getElementById("layersContainer");
+    container.innerHTML = "";
+
+    state.layers.forEach((layer, layerIdx) => {
+      const card = document.createElement("div");
+      card.className = "layer-card";
+      card.style.borderLeft = `4px solid ${layer.colors[0].hex}`;
+
+      const header = document.createElement("div");
+      header.className = "layer-header";
+      header.innerHTML = `
+        <label style="cursor:pointer; font-weight:700; color:#00ffcc;">
+          <input type="checkbox" id="layer_en_${layerIdx}" ${layer.enabled ? "checked" : ""}> ${layer.name}
+        </label>
+        <span style="font-size:11px; color:#a1a1aa;">Tol: <strong id="lbl_tol_${layerIdx}">${layer.tolerance}</strong></span>
+      `;
+      card.appendChild(header);
+
+      const grid = document.createElement("div");
+      grid.className = "swatches-grid";
+      layer.colors.forEach((slot, slotIdx) => {
+        const box = document.createElement("div");
+        box.className = "swatch-slot" + (slot.active ? "" : " disabled-slot");
+        box.id = `slot_box_${layerIdx}_${slotIdx}`;
+        box.innerHTML = `
+          <div class="swatch-top">
+            <input type="checkbox" id="slot_chk_${layerIdx}_${slotIdx}" ${slot.active ? "checked" : ""}>
+            <input type="color" id="slot_col_${layerIdx}_${slotIdx}" value="${slot.hex}">
+            <button class="btn-clear-slot" id="slot_clr_${layerIdx}_${slotIdx}">×</button>
+          </div>
+          <button class="btn-drop" id="slot_drop_${layerIdx}_${slotIdx}">💧 #${slotIdx + 1}</button>
+        `;
+        grid.appendChild(box);
+      });
+      card.appendChild(grid);
+
+      const controls = document.createElement("div");
+      controls.style.cssText = "display:flex;flex-direction:column;gap:5px;";
+      controls.innerHTML = `
+        <input type="range" id="layer_tol_${layerIdx}" min="5" max="140" value="${layer.tolerance}">
+        <div class="row">
+          <select id="layer_pal_${layerIdx}"></select>
+          <select id="layer_sty_${layerIdx}"></select>
+        </div>
+        <div class="row" style="font-size:10px; color:#a1a1aa; justify-content:space-between;">
+          <span>Pixels: <strong id="layer_count_${layerIdx}">0</strong></span>
+          <span>Cor: <span id="layer_prev_${layerIdx}" style="display:inline-block;width:14px;height:14px;background:${layer.colors[0].hex};border-radius:3px;border:1px solid #000;"></span></span>
+        </div>
+      `;
+      card.appendChild(controls);
+      container.appendChild(card);
+
+      populatePaletaSelect(document.getElementById(`layer_pal_${layerIdx}`), layer.palette);
+      populateEstiloSelect(document.getElementById(`layer_sty_${layerIdx}`), layer.style);
+
+      document.getElementById(`layer_en_${layerIdx}`).addEventListener("change", (e) => {
+        layer.enabled = e.target.checked;
+        state.layersActive = true; renderLayersFrame();
+      });
+      document.getElementById(`layer_tol_${layerIdx}`).addEventListener("input", (e) => {
+        layer.tolerance = parseInt(e.target.value, 10);
+        document.getElementById(`lbl_tol_${layerIdx}`).textContent = layer.tolerance;
+        state.layersActive = true; renderLayersFrame();
+      });
+      document.getElementById(`layer_pal_${layerIdx}`).addEventListener("change", (e) => {
+        layer.palette = e.target.value;
+        state.layersActive = true; renderLayersFrame();
+      });
+      document.getElementById(`layer_sty_${layerIdx}`).addEventListener("change", (e) => {
+        layer.style = e.target.value;
+        state.layersActive = true; renderLayersFrame();
+      });
+
+      layer.colors.forEach((slot, slotIdx) => {
+        const chkEl = document.getElementById(`slot_chk_${layerIdx}_${slotIdx}`);
+        const colEl = document.getElementById(`slot_col_${layerIdx}_${slotIdx}`);
+        const clrEl = document.getElementById(`slot_clr_${layerIdx}_${slotIdx}`);
+        const dropEl = document.getElementById(`slot_drop_${layerIdx}_${slotIdx}`);
+        const boxEl = document.getElementById(`slot_box_${layerIdx}_${slotIdx}`);
+
+        chkEl.addEventListener("change", (e) => {
+          slot.active = e.target.checked;
+          boxEl.classList.toggle("disabled-slot", !slot.active);
+          if (slot.active) { layer.enabled = true; document.getElementById(`layer_en_${layerIdx}`).checked = true; }
+          state.layersActive = true; renderLayersFrame();
+        });
+        colEl.addEventListener("input", (e) => {
+          slot.hex = e.target.value; slot.active = true; chkEl.checked = true;
+          boxEl.classList.remove("disabled-slot");
+          layer.enabled = true; document.getElementById(`layer_en_${layerIdx}`).checked = true;
+          if (slotIdx === 0) card.style.borderLeftColor = slot.hex;
+          const prev = document.getElementById(`layer_prev_${layerIdx}`);
+          if (prev) prev.style.background = slot.hex;
+          state.layersActive = true; renderLayersFrame();
+        });
+        clrEl.addEventListener("click", () => {
+          slot.active = false; chkEl.checked = false; boxEl.classList.add("disabled-slot");
+          state.layersActive = true; renderLayersFrame();
+        });
+        dropEl.addEventListener("click", () => {
+          const isSame = state.activeEyedropper &&
+            state.activeEyedropper.layerIndex === layerIdx &&
+            state.activeEyedropper.slotIndex === slotIdx;
+          clearEyedropperState();
+          if (!isSame) {
+            state.activeEyedropper = { layerIndex: layerIdx, slotIndex: slotIdx };
+            dropEl.classList.add("eyedropper-active");
+            mainCanvas.classList.add("picking");
+            statusBadge.textContent = `💧 Clique no personagem: ${layer.name} (#${slotIdx + 1})`;
+            state.layersActive = true;
+            renderLayersFrame();
+          }
+        });
+      });
     });
-  });
+  }
 
-  document.getElementById("rangeBloco").addEventListener("input", (e) => { document.getElementById("lblBloco").textContent = e.target.value; renderFrame(); });
-  document.getElementById("rangeBrilho").addEventListener("input", (e) => { document.getElementById("lblBrilho").textContent = e.target.value; renderFrame(); });
-  document.getElementById("rangeContraste").addEventListener("input", (e) => { document.getElementById("lblContraste").textContent = e.target.value; renderFrame(); });
-  document.getElementById("rangeTol").addEventListener("input", (e) => { document.getElementById("lblTol").textContent = e.target.value; renderFrame(); });
-  document.getElementById("rangeZoom").addEventListener("input", (e) => {
-    const z = parseInt(e.target.value, 10);
-    document.getElementById("lblZoom").textContent = `${z}%`;
-    mainCanvas.style.width = `${Math.round(mainCanvas.width*(z/100))}px`;
-    mainCanvas.style.height = `${Math.round(mainCanvas.height*(z/100))}px`;
-  });
-  document.getElementById("rangeFps").addEventListener("input", (e) => { document.getElementById("lblFps").textContent = e.target.value; });
-  document.getElementById("rangeDur").addEventListener("input", (e) => { document.getElementById("lblDur").textContent = e.target.value; });
-  document.getElementById("btnRenderNow").addEventListener("click", renderFrame);
+  function clearEyedropperState() {
+    state.activeEyedropper = null;
+    document.querySelectorAll("#layersContainer .btn-drop").forEach(b => b.classList.remove("eyedropper-active"));
+    mainCanvas.classList.remove("picking");
+  }
 
-  document.getElementById("btnAddCustom").addEventListener("click", () => {
-    customPalette.push(document.getElementById("customColor").value);
-    useCustomPalette = true; atualizarPreviewPaleta(); renderFrame();
-  });
-  document.getElementById("btnUseCustom").addEventListener("click", () => { useCustomPalette = true; atualizarPreviewPaleta(); renderFrame(); });
-  document.getElementById("btnClearCustom").addEventListener("click", () => { customPalette = []; useCustomPalette = false; atualizarPreviewPaleta(); renderFrame(); });
+  function drawDemoCharacter(c, w, h) {
+    c.fillStyle = "#1e293b"; c.fillRect(0,0,w,h);
+    c.fillStyle = "#3b2314"; c.fillRect(105,40,110,75);
+    c.fillStyle = "#9a3412"; c.fillRect(175,45,35,65);
+    c.fillStyle = "#f2b894"; c.fillRect(118,70,84,72);
+    c.fillStyle = "#c97b5d"; c.fillRect(118,130,84,12);
+    c.fillStyle = "#10b981"; c.fillRect(134,96,12,14); c.fillRect(174,96,12,14);
+    c.fillStyle = "#064e3b"; c.fillRect(138,100,4,6); c.fillRect(178,100,4,6);
+    c.fillStyle = "#2563eb"; c.fillRect(96,146,128,74);
+    c.fillStyle = "#1e3a8a"; c.fillRect(96,146,128,8);
+    c.fillStyle = "#eab308"; c.fillRect(96,212,128,12);
+    c.fillStyle = "#1e293b"; c.fillRect(108,224,44,58); c.fillRect(168,224,44,58);
+    c.fillStyle = "#dc2626"; c.fillRect(102,282,52,20); c.fillRect(166,282,52,20);
+    c.fillStyle = "#7f1d1d"; c.fillRect(102,298,52,4); c.fillRect(166,298,52,4);
+  }
 
-  document.getElementById("btnCornerColor").addEventListener("click", () => {
-    const p = offCtx.getImageData(0,0,1,1).data;
-    const hex = "#" + [p[0],p[1],p[2]].map(v => v.toString(16).padStart(2,"0")).join("");
-    document.getElementById("chromaColor").value = hex;
-    document.getElementById("chkChroma").checked = true;
-    renderFrame();
-  });
+  function renderLayersFrame() {
+    const px = state.bloco;
 
-  // ===== DOWNLOAD EM TAMANHO ORIGINAL =====
-  document.getElementById("btnDownloadImg").addEventListener("click", () => {
-    const fmt = document.getElementById("exportFormat").value;
-    const name = document.getElementById("fileName").value.trim() || "pixel_art";
-    let canvasToExport = mainCanvas;
+    let srcW = 480, srcH = 320;
+    if (state.mediaType === "image" && state.currentImg) {
+      srcW = state.currentImg.naturalWidth || state.currentImg.width;
+      srcH = state.currentImg.naturalHeight || state.currentImg.height;
+    } else if (state.mediaType === "video" && videoEl.videoWidth > 0) {
+      srcW = videoEl.videoWidth; srcH = videoEl.videoHeight;
+    }
 
-    if (mediaType === "image" || mediaType === "video") {
-      try {
-        canvasToExport = renderFrameFullRes();
-      } catch (err) {
-        console.warn("Falha ao gerar alta resolução, usando canvas atual:", err);
-        canvasToExport = mainCanvas;
+    const maxDim = 640;
+    if (srcW > maxDim || srcH > maxDim) {
+      const r = Math.min(maxDim/srcW, maxDim/srcH);
+      srcW = Math.round(srcW*r); srcH = Math.round(srcH*r);
+    }
+
+    mainCanvas.width = srcW; mainCanvas.height = srcH;
+    offCanvas.width = srcW; offCanvas.height = srcH;
+
+    if (state.mediaType === "demo" || state.mediaType === "none") {
+      drawDemoCharacter(offCtx, srcW, srcH);
+    } else if (state.mediaType === "image" && state.currentImg) {
+      offCtx.clearRect(0,0,srcW,srcH); offCtx.drawImage(state.currentImg,0,0,srcW,srcH);
+    } else if (state.mediaType === "video") {
+      offCtx.clearRect(0,0,srcW,srcH); offCtx.drawImage(videoEl,0,0,srcW,srcH);
+    }
+
+    const data = offCtx.getImageData(0, 0, srcW, srcH).data;
+    const cols = Math.ceil(srcW / px), rows = Math.ceil(srcH / px);
+
+    const activeLayers = state.layers.map((l, idx) => ({ ...l, idx }))
+      .filter(l => l.enabled)
+      .map(l => ({
+        ...l,
+        targets: l.colors.filter(c => c.active).map(c => window.PaletaHelper.parseHex(c.hex)),
+        rgbPal: getPaletaRgb(l.palette)
+      }))
+      .filter(l => l.targets.length > 0);
+
+    const globalRgbPal = getActiveRgbPalette();
+    const layerCounts = new Array(state.layers.length).fill(0);
+
+    const BAYER2 = [[0,2],[3,1]];
+    const BAYER4 = [[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]];
+    const BAYER8 = [
+      [0,32,8,40,2,34,10,42],[48,16,56,24,50,18,58,26],
+      [12,44,4,36,14,46,6,38],[60,28,52,20,62,30,54,22],
+      [3,35,11,43,1,33,9,41],[51,19,59,27,49,17,57,25],
+      [15,47,7,39,13,45,5,37],[63,31,55,23,61,29,53,21]
+    ];
+
+    const factor = (259 * (state.contraste + 255)) / (255 * (259 - state.contraste));
+
+    ctx.clearRect(0, 0, srcW, srcH);
+    ctx.imageSmoothingEnabled = false;
+
+    for (let by = 0; by < rows; by++) {
+      for (let bx = 0; bx < cols; bx++) {
+        const startX = bx * px, startY = by * px;
+        const bw = Math.min(px, srcW - startX), bh = Math.min(px, srcH - startY);
+        const sampleX = Math.min(srcW - 1, startX + Math.floor(px / 2));
+        const sampleY = Math.min(srcH - 1, startY + Math.floor(px / 2));
+        const centerIdx = (sampleY * srcW + sampleX) * 4;
+        const cR = data[centerIdx], cG = data[centerIdx+1], cB = data[centerIdx+2];
+
+        let sumR = 0, sumG = 0, sumB = 0, sumA = 0, count = 0;
+        for (let y = startY; y < startY + bh; y++) {
+          for (let x = startX; x < startX + bw; x++) {
+            const i = (y * srcW + x) * 4;
+            sumR += data[i]; sumG += data[i+1]; sumB += data[i+2]; sumA += data[i+3];
+            count++;
+          }
+        }
+        let r = sumR/count, g = sumG/count, b = sumB/count;
+        let a = sumA/count;
+        if (a < 20) continue;
+
+        if (state.chromaAtivo) {
+          const cr = window.PaletaHelper.parseHex(state.chromaHex);
+          const dist = Math.hypot(r - cr[0], g - cr[1], b - cr[2]);
+          if (dist <= state.chromaTol) continue;
+        }
+
+        let matchedLayer = null, bestDist = Infinity;
+        for (let i = 0; i < activeLayers.length; i++) {
+          const layer = activeLayers[i];
+          for (let t = 0; t < layer.targets.length; t++) {
+            const tg = layer.targets[t];
+            const dr = r - tg[0], dg = g - tg[1], db = b - tg[2];
+            const dist = Math.sqrt(dr*dr*0.3 + dg*dg*0.59 + db*db*0.11);
+            if (dist <= layer.tolerance && dist < bestDist) {
+              bestDist = dist;
+              matchedLayer = layer;
+            }
+          }
+        }
+        if (matchedLayer) layerCounts[matchedLayer.idx]++;
+
+        const targetStyle = matchedLayer ? matchedLayer.style : state.estiloKey;
+        const targetPalette = matchedLayer ? matchedLayer.rgbPal : globalRgbPal;
+
+        if (targetStyle === "quadrado_centro") {
+          r = cR; g = cG; b = cB;
+        } else if (targetStyle === "erosao" || targetStyle === "dilatacao") {
+          let bestLuma = targetStyle === "erosao" ? Infinity : -1;
+          let bestRgb = [r, g, b];
+          for (let y = startY; y < startY + bh; y++) {
+            for (let x = startX; x < startX + bw; x++) {
+              const i = (y * srcW + x) * 4;
+              const luma = data[i] + data[i+1] + data[i+2];
+              if ((targetStyle === "erosao" && luma < bestLuma) || (targetStyle === "dilatacao" && luma > bestLuma)) {
+                bestLuma = luma;
+                bestRgb = [data[i], data[i+1], data[i+2]];
+              }
+            }
+          }
+          r = bestRgb[0]; g = bestRgb[1]; b = bestRgb[2];
+        }
+
+        r = Math.min(255, Math.max(0, factor * (r - 128) + 128 + state.brilho));
+        g = Math.min(255, Math.max(0, factor * (g - 128) + 128 + state.brilho));
+        b = Math.min(255, Math.max(0, factor * (b - 128) + 128 + state.brilho));
+
+        if (targetStyle === "bayer2") {
+          const t = (BAYER2[by % 2][bx % 2] / 4 - 0.5) * 64;
+          r = Math.min(255, Math.max(0, r + t)); g = Math.min(255, Math.max(0, g + t)); b = Math.min(255, Math.max(0, b + t));
+        } else if (targetStyle === "bayer4") {
+          const t = (BAYER4[by % 4][bx % 4] / 16 - 0.5) * 64;
+          r = Math.min(255, Math.max(0, r + t)); g = Math.min(255, Math.max(0, g + t)); b = Math.min(255, Math.max(0, b + t));
+        } else if (targetStyle === "bayer8") {
+          const t = (BAYER8[by % 8][bx % 8] / 64 - 0.5) * 64;
+          r = Math.min(255, Math.max(0, r + t)); g = Math.min(255, Math.max(0, g + t)); b = Math.min(255, Math.max(0, b + t));
+        }
+
+        let finalRgb = [r, g, b];
+        if (targetPalette && targetPalette.length > 0) {
+          finalRgb = window.PaletaHelper.corMaisProxima(r, g, b, targetPalette);
+        }
+
+        // Contorno com força ajustável
+        let drawOutline = false;
+        if (state.contorno && bx > 0 && by > 0) {
+          const leftIdx = (sampleY * srcW + Math.max(0, sampleX - px)) * 4;
+          const diff = Math.abs(r - data[leftIdx]) + Math.abs(g - data[leftIdx+1]) + Math.abs(b - data[leftIdx+2]);
+          const threshold = 255 - state.contornoForca;
+          if (diff > threshold) drawOutline = true;
+        }
+
+        if (drawOutline) {
+          ctx.fillStyle = "#08080a";
+          ctx.fillRect(startX, startY, bw, bh);
+          if (state.showDebug && matchedLayer) {
+            ctx.strokeStyle = matchedLayer.colors[0].hex;
+            ctx.lineWidth = 1;
+            ctx.strokeRect(startX + 0.5, startY + 0.5, bw - 1, bh - 1);
+          }
+          continue;
+        }
+
+        window.EstiloRenderer.desenharBloco(ctx, targetStyle, startX, startY, bw, bh, finalRgb, bx, by, px);
+
+        if (state.grade) {
+          ctx.strokeStyle = "rgba(0,0,0,0.35)";
+          ctx.lineWidth = 1;
+          ctx.strokeRect(startX + 0.5, startY + 0.5, bw - 1, bh - 1);
+        }
+
+        if (state.showDebug && matchedLayer) {
+          ctx.strokeStyle = matchedLayer.colors[0].hex;
+          ctx.lineWidth = 1;
+          ctx.strokeRect(startX + 0.5, startY + 0.5, bw - 1, bh - 1);
+        }
       }
     }
 
-    const link = document.createElement("a");
-    link.download = `${name}.${fmt === "jpeg" ? "jpg" : "png"}`;
-    link.href = canvasToExport.toDataURL(`image/${fmt}`, 0.92);
-    link.click();
-    statusBadge.textContent = `Exportado ${canvasToExport.width}x${canvasToExport.height}`;
-  });
+    state.layers.forEach((_, i) => {
+      const el = document.getElementById(`layer_count_${i}`);
+      if (el) el.textContent = layerCounts[i];
+    });
 
-  const btnRecord = document.getElementById("btnRecordVideo");
-  btnRecord.addEventListener("click", () => {
-    if (mediaRecorder && mediaRecorder.state === "recording") {
-      mediaRecorder.stop(); btnRecord.textContent = "⏺ Gravar Vídeo (.WEBM)"; btnRecord.classList.remove("danger"); return;
+    if (state.mediaType === "video" && videoEl.duration) {
+      document.getElementById("videoSeek").value = (videoEl.currentTime/videoEl.duration)*100;
+      document.getElementById("videoTime").textContent = `${videoEl.currentTime.toFixed(1)}s / ${videoEl.duration.toFixed(1)}s`;
     }
-    const stream = mainCanvas.captureStream(30);
-    recordedChunks = [];
-    mediaRecorder = new MediaRecorder(stream, { mimeType: "video/webm" });
-    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
-    mediaRecorder.onstop = () => {
-      const blob = new Blob(recordedChunks, { type: "video/webm" });
-      const url = URL.createObjectURL(blob);
-      const name = document.getElementById("fileName").value.trim() || "pixel_video";
-      const a = document.createElement("a"); a.href = url; a.download = `${name}.webm`; a.click();
-      statusBadge.textContent = "Vídeo .WEBM exportado!";
-    };
-    mediaRecorder.start(); btnRecord.textContent = "⏹ Parar & Salvar Vídeo"; btnRecord.classList.add("danger");
-    statusBadge.textContent = "Gravando vídeo...";
+  }
+
+  function startLayersVideoLoop() {
+    function loop() {
+      if (state.layersActive && state.mediaType === "video" && !videoEl.paused && !videoEl.ended) {
+        renderLayersFrame();
+      }
+      if (state.layersActive) requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+  }
+
+  mainCanvas.addEventListener("click", (e) => {
+    if (!state.activeEyedropper) return;
+    const rect = mainCanvas.getBoundingClientRect();
+    const scaleX = offCanvas.width / rect.width;
+    const scaleY = offCanvas.height / rect.height;
+    const x = Math.floor((e.clientX - rect.left) * scaleX);
+    const y = Math.floor((e.clientY - rect.top) * scaleY);
+    if (x < 0 || y < 0 || x >= offCanvas.width || y >= offCanvas.height) return;
+    const pixel = offCtx.getImageData(x, y, 1, 1).data;
+    const hex = "#" + [pixel[0],pixel[1],pixel[2]].map(v => v.toString(16).padStart(2,"0")).join("");
+    const { layerIndex, slotIndex } = state.activeEyedropper;
+    const layer = state.layers[layerIndex];
+    const slot = layer.colors[slotIndex];
+    slot.hex = hex; slot.active = true; layer.enabled = true;
+    document.getElementById(`layer_en_${layerIndex}`).checked = true;
+    document.getElementById(`slot_chk_${layerIndex}_${slotIndex}`).checked = true;
+    document.getElementById(`slot_col_${layerIndex}_${slotIndex}`).value = hex;
+    document.getElementById(`slot_box_${layerIndex}_${slotIndex}`).classList.remove("disabled-slot");
+    const prev = document.getElementById(`layer_prev_${layerIndex}`);
+    if (prev) prev.style.background = hex;
+    const box = document.getElementById(`slot_box_${layerIndex}_${slotIndex}`);
+    box.style.transform = "scale(1.15)"; setTimeout(() => { box.style.transform = "scale(1)"; }, 150);
+    clearEyedropperState();
+    statusBadge.textContent = `✅ ${hex.toUpperCase()} salvo em ${layer.name} (#${slotIndex + 1})`;
+    renderLayersFrame();
   });
 
-  // ===== EXPORTAR SEQUÊNCIA PNG EM ZIP (TAMANHO ORIGINAL) =====
-  document.getElementById("btnExportZip").addEventListener("click", async () => {
-    if (mediaType === "none") { alert("Carregue uma imagem ou vídeo primeiro!"); return; }
-    if (typeof JSZip === "undefined") { alert("JSZip não carregado. Verifique jszip.min.js."); return; }
+  function createZipBlob(files) {
+    const encoder = new TextEncoder();
+    const centralDir = [], fileChunks = [];
+    let offset = 0;
+    const crcTable = new Uint32Array(256);
+    for (let i = 0; i < 256; i++) { let c = i; for (let k = 0; k < 8; k++) c = (c&1)?(0xedb88320^(c>>>1)):(c>>>1); crcTable[i] = c; }
+    function crc32(buf) { let crc = 0xffffffff; for (let i = 0; i < buf.length; i++) crc = crcTable[(crc ^ buf[i]) & 0xff] ^ (crc >>> 8); return (crc ^ 0xffffffff) >>> 0; }
+    for (const file of files) {
+      const nameBytes = encoder.encode(file.name);
+      const data = file.data;
+      const crc = crc32(data);
+      const lh = new Uint8Array(30 + nameBytes.length);
+      const lv = new DataView(lh.buffer);
+      lv.setUint32(0, 0x04034b50, true); lv.setUint16(4, 20, true);
+      lv.setUint32(14, crc, true); lv.setUint32(18, data.length, true); lv.setUint32(22, data.length, true);
+      lv.setUint16(26, nameBytes.length, true);
+      lh.set(nameBytes, 30);
+      fileChunks.push(lh, data);
+      const ch = new Uint8Array(46 + nameBytes.length);
+      const cv = new DataView(ch.buffer);
+      cv.setUint32(0, 0x02014b50, true); cv.setUint16(4, 20, true); cv.setUint16(6, 20, true);
+      cv.setUint32(16, crc, true); cv.setUint32(20, data.length, true); cv.setUint32(24, data.length, true);
+      cv.setUint16(28, nameBytes.length, true); cv.setUint32(42, offset, true);
+      ch.set(nameBytes, 46);
+      centralDir.push(ch);
+      offset += lh.length + data.length;
+    }
+    let cdSize = 0; centralDir.forEach(c => cdSize += c.length);
+    const eocd = new Uint8Array(22);
+    const ev = new DataView(eocd.buffer);
+    ev.setUint32(0, 0x06054b50, true); ev.setUint16(8, files.length, true); ev.setUint16(10, files.length, true);
+    ev.setUint32(12, cdSize, true); ev.setUint32(16, offset, true);
+    return new Blob([...fileChunks, ...centralDir, eocd], { type: "application/zip" });
+  }
 
+  async function exportLayersZip() {
+    if (state.mediaType !== "video" || !videoEl.duration) {
+      alert("Carregue um vídeo primeiro para exportar a sequência PNG em .ZIP.");
+      return;
+    }
     const fps = parseInt(document.getElementById("rangeFps").value, 10);
     const dur = parseInt(document.getElementById("rangeDur").value, 10);
     const totalFrames = fps * dur;
     const name = document.getElementById("fileName").value.trim() || "pixel_sequence";
+
     const zip = new JSZip();
-    const progressBar = document.getElementById("zipProgress");
-    const progressFill = progressBar.querySelector("div");
-    const zipStatus = document.getElementById("zipStatus");
-    const btn = document.getElementById("btnExportZip");
+    const bar = document.getElementById("zipProgress");
+    const fill = bar.querySelector("div");
+    const statusEl = document.getElementById("zipStatus");
+    bar.classList.add("active");
+    fill.style.width = "0%";
+    statusEl.textContent = `0 / ${totalFrames} frames`;
 
-    btn.disabled = true; btn.textContent = "⏳ Gerando...";
-    progressBar.classList.add("active"); progressFill.style.width = "0%";
-    zipStatus.textContent = `0 / ${totalFrames} frames`;
-
-    const opts = getOptions();
-    const savedTime = synthTime, savedVidTime = videoEl.currentTime, wasPlaying = isPlaying;
-    const savedPaused = videoEl.paused;
+    const wasPlaying = !videoEl.paused;
     videoEl.pause();
+    state.layersActive = true;
 
     try {
       for (let i = 0; i < totalFrames; i++) {
         const t = i / fps;
-        let frameCanvas;
-
-        if (mediaType === "image" && currentImg) {
-          frameCanvas = renderFrameFullRes();
-        } else if (mediaType === "video") {
-          await new Promise((resolve) => {
-            const target = Math.min(t, videoEl.duration || t);
-            if (Math.abs(videoEl.currentTime - target) < 0.01) { resolve(); return; }
-            videoEl.currentTime = target;
-            const onSeeked = () => { videoEl.removeEventListener("seeked", onSeeked); resolve(); };
-            videoEl.addEventListener("seeked", onSeeked);
-            setTimeout(resolve, 500);
-          });
-          frameCanvas = renderFrameFullRes();
-        } else if (mediaType === "synth") {
-          frameCanvas = renderFrameFullRes();
-        }
-
-        const dataUrl = frameCanvas.toDataURL("image/png");
-        const base64 = dataUrl.split(",")[1];
-        zip.file(`frame_${String(i).padStart(4,"0")}.png`, base64, { base64: true });
-        const pct = ((i+1)/totalFrames)*100;
-        progressFill.style.width = `${pct}%`;
-        zipStatus.textContent = `${i+1} / ${totalFrames} frames (${frameCanvas.width}x${frameCanvas.height})`;
+        await new Promise((resolve) => {
+          const target = Math.min(t, videoEl.duration || t);
+          if (Math.abs(videoEl.currentTime - target) < 0.01) { resolve(); return; }
+          videoEl.currentTime = target;
+          const onSeeked = () => { videoEl.removeEventListener("seeked", onSeeked); resolve(); };
+          videoEl.addEventListener("seeked", onSeeked);
+          setTimeout(resolve, 500);
+        });
+        renderLayersFrame();
+        const dataUrl = mainCanvas.toDataURL("image/png");
+        zip.file(`frame_${String(i).padStart(4,"0")}.png`, dataUrl.split(",")[1], { base64: true });
+        fill.style.width = `${((i+1)/totalFrames)*100}%`;
+        statusEl.textContent = `${i+1} / ${totalFrames} frames`;
         if (i % 3 === 0) await new Promise(r => setTimeout(r, 0));
       }
-      zipStatus.textContent = "Compactando .zip...";
-      await new Promise(r => setTimeout(r, 50));
+      statusEl.textContent = "Compactando .zip...";
       const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement("a"); a.href = url; a.download = `${name}.zip`; a.click();
+      const a = document.createElement("a"); a.href = url; a.download = `${name}_7camadas.zip`; a.click();
       URL.revokeObjectURL(url);
-      zipStatus.textContent = `✅ Pronto! ${totalFrames} frames exportados.`;
-      statusBadge.textContent = "Sequência .ZIP exportada!";
+      statusEl.textContent = `✅ Pronto! ${totalFrames} frames.`;
+      statusBadge.textContent = "Sequência 7 Camadas .ZIP exportada!";
     } catch (err) {
-      console.error(err);
-      zipStatus.textContent = "❌ Erro: " + err.message;
+      statusEl.textContent = "❌ Erro: " + err.message;
     } finally {
-      if (mediaType === "synth") synthTime = savedTime;
-      if (mediaType === "video") { videoEl.currentTime = savedVidTime; if (!savedPaused && wasPlaying) videoEl.play(); }
-      isPlaying = wasPlaying;
-      btn.disabled = false; btn.textContent = "📦 Exportar .ZIP (PNG)";
-      setTimeout(() => { progressBar.classList.remove("active"); }, 2000);
+      if (wasPlaying) { videoEl.play(); startLayersVideoLoop(); }
+      setTimeout(() => { bar.classList.remove("active"); }, 2000);
     }
-  });
+  }
 
-  // ===== EXPORTAR GIF ANIMADO =====
-  document.getElementById("rangeGifFps").addEventListener("input", (e) => {
-    document.getElementById("lblGifFps").textContent = e.target.value;
-  });
-  document.getElementById("rangeGifDur").addEventListener("input", (e) => {
-    document.getElementById("lblGifDur").textContent = e.target.value;
-  });
-  document.getElementById("rangeGifQual").addEventListener("input", (e) => {
-    document.getElementById("lblGifQual").textContent = e.target.value;
-  });
+  function init() {
+    populatePaletaSelect(selectPaleta, "original");
+    populateEstiloSelect(selectEstilo, "quadrado_media");
+    document.getElementById("paletaCount").textContent = getPaletasKeys().length;
+    document.getElementById("estiloCount").textContent = getEstilosIds().length;
+    atualizarPreviewPaleta();
 
-  document.getElementById("btnExportGif").addEventListener("click", async () => {
-    if (mediaType === "none") { alert("Carregue uma imagem ou vídeo primeiro!"); return; }
-    if (typeof GIF === "undefined") { alert("gif.js não carregado."); return; }
+    initLayers();
 
-    const fps = parseInt(document.getElementById("rangeGifFps").value, 10);
-    const dur = parseInt(document.getElementById("rangeGifDur").value, 10);
-    const quality = parseInt(document.getElementById("rangeGifQual").value, 10);
-    const totalFrames = fps * dur;
-    const delay = Math.round(1000 / fps);
-    const name = document.getElementById("fileName").value.trim() || "pixel_gif";
-    const progressBar = document.getElementById("gifProgress");
-    const progressFill = progressBar.querySelector("div");
-    const gifStatus = document.getElementById("gifStatus");
-    const btn = document.getElementById("btnExportGif");
-
-    btn.disabled = true;
-    btn.textContent = "⏳ Gerando GIF...";
-    progressBar.classList.add("active");
-    progressFill.style.width = "0%";
-    gifStatus.textContent = `0 / ${totalFrames} frames`;
-
-    const opts = getOptions();
-    const savedTime = synthTime;
-    const savedVidTime = videoEl.currentTime;
-    const wasPlaying = isPlaying;
-    const wasPaused = videoEl.paused;
-    videoEl.pause();
-
-    // Tamanho do GIF: usa o canvas do preview (GIFs gigantes ficam pesados)
-    const w = mainCanvas.width, h = mainCanvas.height;
-
-    const workerScript = (typeof window.GIF_WORKER_SCRIPT !== "undefined")
-      ? window.GIF_WORKER_SCRIPT
-      : "gif.worker.js";
-
-    try {
-      const gif = new GIF({
-        workers: 2,
-        quality: Math.max(1, 30 - quality),
-        width: w,
-        height: h,
-        workerScript: workerScript,
-        transparent: "rgba(0,0,0,0)"
+    document.getElementById("rangeBloco").addEventListener("input", (e) => {
+      state.bloco = parseInt(e.target.value, 10);
+      document.getElementById("lblBloco").textContent = `${state.bloco} px`;
+      if (state.layersActive) renderLayersFrame(); else renderRetroFrame();
+    });
+    selectPaleta.addEventListener("change", (e) => {
+      state.paletteKey = e.target.value;
+      state.useCustomPalette = false;
+      atualizarPreviewPaleta();
+      if (state.layersActive) renderLayersFrame(); else renderRetroFrame();
+    });
+    selectEstilo.addEventListener("change", (e) => {
+      state.estiloKey = e.target.value;
+      if (state.layersActive) renderLayersFrame(); else renderRetroFrame();
+    });
+    document.getElementById("chkGrade").addEventListener("change", (e) => {
+      state.grade = e.target.checked;
+      if (state.layersActive) renderLayersFrame(); else renderRetroFrame();
+    });
+    document.getElementById("chkContorno").addEventListener("change", (e) => {
+      state.contorno = e.target.checked;
+      if (state.layersActive) renderLayersFrame(); else renderRetroFrame();
+    });
+    const cf = document.getElementById("rangeContornoForca");
+    if (cf) {
+      cf.addEventListener("input", (e) => {
+        state.contornoForca = parseInt(e.target.value, 10);
+        document.getElementById("lblContornoForca").textContent = state.contornoForca;
+        if (state.layersActive) renderLayersFrame(); else renderRetroFrame();
       });
+    }
+    document.getElementById("rangeBrilho").addEventListener("input", (e) => {
+      state.brilho = parseInt(e.target.value, 10);
+      document.getElementById("lblBrilho").textContent = state.brilho;
+      if (state.layersActive) renderLayersFrame(); else renderRetroFrame();
+    });
+    document.getElementById("rangeContraste").addEventListener("input", (e) => {
+      state.contraste = parseInt(e.target.value, 10);
+      document.getElementById("lblContraste").textContent = state.contraste;
+      if (state.layersActive) renderLayersFrame(); else renderRetroFrame();
+    });
+    document.getElementById("chkChroma").addEventListener("change", (e) => {
+      state.chromaAtivo = e.target.checked;
+      if (state.layersActive) renderLayersFrame(); else renderRetroFrame();
+    });
+    document.getElementById("chromaColor").addEventListener("input", (e) => {
+      state.chromaHex = e.target.value;
+      if (state.layersActive) renderLayersFrame(); else renderRetroFrame();
+    });
+    document.getElementById("rangeTol").addEventListener("input", (e) => {
+      state.chromaTol = parseInt(e.target.value, 10);
+      document.getElementById("lblTol").textContent = state.chromaTol;
+      if (state.layersActive) renderLayersFrame(); else renderRetroFrame();
+    });
+    document.getElementById("btnCornerColor").addEventListener("click", () => {
+      const p = offCtx.getImageData(0,0,1,1).data;
+      const hex = "#" + [p[0],p[1],p[2]].map(v => v.toString(16).padStart(2,"0")).join("");
+      document.getElementById("chromaColor").value = hex;
+      state.chromaHex = hex;
+      document.getElementById("chkChroma").checked = true;
+      state.chromaAtivo = true;
+      if (state.layersActive) renderLayersFrame(); else renderRetroFrame();
+    });
 
-      gif.on("progress", (p) => {
-        const pct = p * 100;
-        progressFill.style.width = `${pct}%`;
-        gifStatus.textContent = `Codificando GIF... ${Math.round(pct)}%`;
-      });
+    document.getElementById("btnAddCustom").addEventListener("click", () => {
+      state.customPalette.push(document.getElementById("customColor").value);
+      state.useCustomPalette = true; atualizarPreviewPaleta();
+      if (state.layersActive) renderLayersFrame(); else renderRetroFrame();
+    });
+    document.getElementById("btnUseCustom").addEventListener("click", () => {
+      state.useCustomPalette = true; atualizarPreviewPaleta();
+      if (state.layersActive) renderLayersFrame(); else renderRetroFrame();
+    });
+    document.getElementById("btnClearCustom").addEventListener("click", () => {
+      state.customPalette = []; state.useCustomPalette = false; atualizarPreviewPaleta();
+      if (state.layersActive) renderLayersFrame(); else renderRetroFrame();
+    });
 
-      gif.on("finished", (blob) => {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `${name}.gif`;
-        a.click();
-        URL.revokeObjectURL(url);
-        gifStatus.textContent = `✅ GIF pronto! (${totalFrames} frames)`;
-        statusBadge.textContent = "GIF exportado!";
-        btn.disabled = false;
-        btn.textContent = "🎞️ Exportar GIF";
-        setTimeout(() => { progressBar.classList.remove("active"); }, 2000);
-      });
+    document.getElementById("btnUpload").addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", (e) => {
+      const file = e.target.files[0]; if (!file) return;
+      const url = URL.createObjectURL(file); pararVideoAnterior();
+      state.layersActive = false;
 
-      gif.on("abort", () => {
-        gifStatus.textContent = "❌ Geração cancelada.";
-        btn.disabled = false;
-        btn.textContent = "🎞️ Exportar GIF";
-        progressBar.classList.remove("active");
-      });
+      if (file.type.startsWith("video/")) {
+        state.mediaType = "video"; statusBadge.textContent = "Carregando vídeo...";
+        videoEl.src = url; videoEl.muted = document.getElementById("chkMute").checked; videoEl.loop = document.getElementById("chkLoop").checked;
+        videoEl.onloadeddata = () => {
+          setCanvasSize(videoEl.videoWidth, videoEl.videoHeight);
+          videoEl.currentTime = 0;
+          videoEl.play().then(() => {
+            state.isPlaying = true;
+            document.getElementById("btnPlayPause").textContent = "⏸ Pausar";
+            statusBadge.textContent = `Vídeo (${videoEl.videoWidth}x${videoEl.videoHeight})`;
+            renderRetroFrame(); startRetroLoop();
+          }).catch(() => { statusBadge.textContent = "Clique em Play"; renderRetroFrame(); });
+        };
+        videoEl.onerror = () => { statusBadge.textContent = "Erro ao abrir vídeo"; };
+      } else if (file.type.startsWith("image/")) {
+        state.mediaType = "image";
+        const img = new Image();
+        img.onload = () => {
+          state.currentImg = img;
+          setCanvasSize(img.width, img.height);
+          statusBadge.textContent = `Imagem (${img.width}x${img.height})`;
+          renderRetroFrame();
+        };
+        img.src = url;
+      }
+      fileInput.value = "";
+    });
 
-      for (let i = 0; i < totalFrames; i++) {
-        const t = i / fps;
-        if (mediaType === "image" && currentImg) {
-          offCtx.clearRect(0,0,w,h); offCtx.drawImage(currentImg,0,0,w,h);
-        } else if (mediaType === "video") {
-          await new Promise((resolve) => {
-            const target = Math.min(t, videoEl.duration || t);
-            if (Math.abs(videoEl.currentTime - target) < 0.01) { resolve(); return; }
-            videoEl.currentTime = target;
-            const onSeeked = () => { videoEl.removeEventListener("seeked", onSeeked); resolve(); };
-            videoEl.addEventListener("seeked", onSeeked);
-            setTimeout(resolve, 500);
-          });
-          offCtx.clearRect(0,0,w,h); offCtx.drawImage(videoEl,0,0,w,h);
-        } else if (mediaType === "synth") {
-          desenharAnimacaoTeste(offCtx, w, h, t);
+    document.getElementById("btnTestImg").addEventListener("click", () => {
+      pararVideoAnterior();
+      state.mediaType = "image"; state.layersActive = false;
+      setCanvasSize(480, 320);
+      const temp = document.createElement("canvas"); temp.width = 480; temp.height = 320;
+      const tctx = temp.getContext("2d");
+      const grad = tctx.createLinearGradient(0,0,0,320);
+      grad.addColorStop(0,"#1a0b2e"); grad.addColorStop(0.6,"#c71585"); grad.addColorStop(1,"#ff8c00");
+      tctx.fillStyle = grad; tctx.fillRect(0,0,480,320);
+      tctx.fillStyle = "#ffdd00"; tctx.beginPath(); tctx.arc(240,170,65,0,Math.PI*2); tctx.fill();
+      tctx.fillStyle = "#0d0618"; tctx.beginPath();
+      tctx.moveTo(0,250); tctx.lineTo(130,140); tctx.lineTo(260,250);
+      tctx.moveTo(190,250); tctx.lineTo(340,120); tctx.lineTo(480,250); tctx.fill();
+      tctx.fillRect(0,248,480,72);
+      const img = new Image();
+      img.onload = () => { state.currentImg = img; statusBadge.textContent = "Imagem Teste"; renderRetroFrame(); };
+      img.src = temp.toDataURL();
+    });
+
+    document.getElementById("btnTestVid").addEventListener("click", () => {
+      pararVideoAnterior();
+      state.mediaType = "synth"; state.layersActive = false;
+      state.synthTime = 0; state.isPlaying = true;
+      setCanvasSize(480, 320);
+      document.getElementById("btnPlayPause").textContent = "⏸ Pausar";
+      statusBadge.textContent = "Animação Teste";
+      startRetroLoop();
+    });
+
+    document.getElementById("btnLayersDemoChar").addEventListener("click", () => {
+      state.layersActive = true;
+      state.mediaType = "demo";
+      statusBadge.textContent = "7 Camadas: Personagem Exemplo";
+      renderLayersFrame();
+    });
+
+    document.getElementById("btnRenderNow").addEventListener("click", () => {
+      if (state.layersActive) renderLayersFrame();
+      else renderRetroFrame();
+    });
+
+    document.getElementById("btnLayersToggleDebug").addEventListener("click", () => {
+      state.showDebug = !state.showDebug;
+      const b = document.getElementById("btnLayersToggleDebug");
+      b.textContent = state.showDebug ? "Debug ON" : "Debug Visual";
+      b.style.background = state.showDebug ? "#ff0066" : "";
+      state.layersActive = true; renderLayersFrame();
+    });
+
+    document.getElementById("btnPlayPause").addEventListener("click", () => {
+      if (state.mediaType === "video") {
+        if (videoEl.paused) {
+          videoEl.play(); state.isPlaying = true;
+          document.getElementById("btnPlayPause").textContent = "⏸ Pausar";
+          if (state.layersActive) startLayersVideoLoop(); else startRetroLoop();
+        } else {
+          videoEl.pause(); state.isPlaying = false;
+          document.getElementById("btnPlayPause").textContent = "▶ Continuar";
         }
-        const imgData = offCtx.getImageData(0,0,w,h).data;
-        window.EstiloRenderer.renderizar(ctx, imgData, w, h, opts);
-
-        gif.addFrame(ctx, { copy: true, delay: delay });
-
-        const pct = ((i+1)/totalFrames)*100;
-        progressFill.style.width = `${pct}%`;
-        gifStatus.textContent = `Gerando frames... ${i+1} / ${totalFrames}`;
-        if (i % 3 === 0) await new Promise(r => setTimeout(r, 0));
+      } else if (state.mediaType === "synth") {
+        state.isPlaying = !state.isPlaying;
+        document.getElementById("btnPlayPause").textContent = state.isPlaying ? "⏸ Pausar" : "▶ Continuar";
       }
+    });
+    document.getElementById("btnRestart").addEventListener("click", () => {
+      if (state.mediaType === "video") { videoEl.currentTime = 0; if (state.layersActive) renderLayersFrame(); else renderRetroFrame(); }
+      else if (state.mediaType === "synth") { state.synthTime = 0; renderRetroFrame(); }
+    });
+    document.getElementById("videoSeek").addEventListener("input", (e) => {
+      const pct = parseFloat(e.target.value)/100;
+      if (state.mediaType === "video" && videoEl.duration) {
+        videoEl.currentTime = pct*videoEl.duration;
+        if (state.layersActive) renderLayersFrame(); else renderRetroFrame();
+      } else if (state.mediaType === "synth") { state.synthTime = pct*25; renderRetroFrame(); }
+    });
+    document.getElementById("chkLoop").addEventListener("change", (e) => { videoEl.loop = e.target.checked; });
+    document.getElementById("chkMute").addEventListener("change", (e) => { videoEl.muted = e.target.checked; });
 
-      gifStatus.textContent = "Codificando GIF final...";
-      gif.render();
-    } catch (err) {
-      console.error(err);
-      gifStatus.textContent = "❌ Erro: " + err.message;
-      alert("Erro ao gerar GIF: " + err.message);
-      btn.disabled = false;
-      btn.textContent = "🎞️ Exportar GIF";
-      progressBar.classList.remove("active");
-    } finally {
-      if (mediaType === "synth") synthTime = savedTime;
-      if (mediaType === "video") {
-        videoEl.currentTime = savedVidTime;
-        if (!wasPaused && wasPlaying) videoEl.play();
+    rangeZoom.addEventListener("input", (e) => {
+      const z = parseInt(e.target.value, 10);
+      document.getElementById("lblZoom").textContent = `${z}%`;
+      mainCanvas.style.width = `${Math.round(mainCanvas.width*(z/100))}px`;
+      mainCanvas.style.height = `${Math.round(mainCanvas.height*(z/100))}px`;
+    });
+
+    document.getElementById("btnDownloadImg").addEventListener("click", () => {
+      const fmt = document.getElementById("exportFormat").value;
+      const name = document.getElementById("fileName").value.trim() || "pixel_art";
+      let canvasToExport = mainCanvas;
+      if (!state.layersActive && (state.mediaType === "image" || state.mediaType === "video")) {
+        try { canvasToExport = renderRetroFrameFullRes(); } catch (err) { canvasToExport = mainCanvas; }
       }
-      isPlaying = wasPlaying;
-    }
-  });
+      const link = document.createElement("a");
+      link.download = `${name}.${fmt === "jpeg" ? "jpg" : "png"}`;
+      link.href = canvasToExport.toDataURL(`image/${fmt}`, 0.92);
+      link.click();
+      statusBadge.textContent = `Exportado ${canvasToExport.width}x${canvasToExport.height}`;
+    });
 
-  initMenus();
-  document.getElementById("btnTestImg").click();
+    document.getElementById("btnRecordVideo").addEventListener("click", () => {
+      const btn = document.getElementById("btnRecordVideo");
+      if (state.mediaRecorder && state.mediaRecorder.state === "recording") {
+        state.mediaRecorder.stop(); btn.textContent = "⏺ Gravar Vídeo (.WEBM)"; btn.classList.remove("danger"); return;
+      }
+      const stream = mainCanvas.captureStream(30);
+      state.recordedChunks = [];
+      state.mediaRecorder = new MediaRecorder(stream, { mimeType: "video/webm" });
+      state.mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) state.recordedChunks.push(e.data); };
+      state.mediaRecorder.onstop = () => {
+        const blob = new Blob(state.recordedChunks, { type: "video/webm" });
+        const url = URL.createObjectURL(blob);
+        const name = document.getElementById("fileName").value.trim() || "pixel_video";
+        const a = document.createElement("a"); a.href = url; a.download = `${name}.webm`; a.click();
+        statusBadge.textContent = "Vídeo .WEBM exportado!";
+      };
+      state.mediaRecorder.start(); btn.textContent = "⏹ Parar & Salvar"; btn.classList.add("danger");
+      statusBadge.textContent = "Gravando vídeo...";
+    });
+
+    document.getElementById("btnExportZip").addEventListener("click", () => {
+      if (state.layersActive) { exportLayersZip(); return; }
+      if (state.mediaType === "none") { alert("Carregue uma imagem ou vídeo primeiro!"); return; }
+      if (typeof JSZip === "undefined") { alert("JSZip não carregado."); return; }
+      (async () => {
+        const fps = parseInt(document.getElementById("rangeFps").value, 10);
+        const dur = parseInt(document.getElementById("rangeDur").value, 10);
+        const totalFrames = fps * dur;
+        const name = document.getElementById("fileName").value.trim() || "pixel_sequence";
+        const zip = new JSZip();
+        const progressBar = document.getElementById("zipProgress");
+        const fill = progressBar.querySelector("div");
+        const zipStatus = document.getElementById("zipStatus");
+        const btn = document.getElementById("btnExportZip");
+        btn.disabled = true; btn.textContent = "⏳ Gerando...";
+        progressBar.classList.add("active"); fill.style.width = "0%";
+        const savedTime = state.synthTime, savedVidTime = videoEl.currentTime, wasPlaying = state.isPlaying;
+        const savedPaused = videoEl.paused;
+        videoEl.pause();
+        try {
+          for (let i = 0; i < totalFrames; i++) {
+            const t = i / fps;
+            let frameCanvas;
+            if (state.mediaType === "image" && state.currentImg) { frameCanvas = renderRetroFrameFullRes(); }
+            else if (state.mediaType === "video") {
+              await new Promise((resolve) => {
+                const target = Math.min(t, videoEl.duration || t);
+                if (Math.abs(videoEl.currentTime - target) < 0.01) { resolve(); return; }
+                videoEl.currentTime = target;
+                const onSeeked = () => { videoEl.removeEventListener("seeked", onSeeked); resolve(); };
+                videoEl.addEventListener("seeked", onSeeked);
+                setTimeout(resolve, 500);
+              });
+              frameCanvas = renderRetroFrameFullRes();
+            } else if (state.mediaType === "synth") { frameCanvas = renderRetroFrameFullRes(); }
+            zip.file(`frame_${String(i).padStart(4,"0")}.png`, frameCanvas.toDataURL("image/png").split(",")[1], { base64: true });
+            fill.style.width = `${((i+1)/totalFrames)*100}%`;
+            zipStatus.textContent = `${i+1} / ${totalFrames} frames`;
+            if (i % 3 === 0) await new Promise(r => setTimeout(r, 0));
+          }
+          zipStatus.textContent = "Compactando .zip...";
+          const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a"); a.href = url; a.download = `${name}.zip`; a.click();
+          URL.revokeObjectURL(url);
+          zipStatus.textContent = `✅ Pronto! ${totalFrames} frames.`;
+          statusBadge.textContent = "Sequência .ZIP exportada!";
+        } catch (err) { zipStatus.textContent = "❌ Erro: " + err.message; }
+        finally {
+          if (state.mediaType === "synth") state.synthTime = savedTime;
+          if (state.mediaType === "video") { videoEl.currentTime = savedVidTime; if (!savedPaused && wasPlaying) videoEl.play(); }
+          state.isPlaying = wasPlaying;
+          btn.disabled = false; btn.textContent = "📦 Exportar .ZIP (PNG)";
+          setTimeout(() => { progressBar.classList.remove("active"); }, 2000);
+        }
+      })();
+    });
+
+    document.getElementById("btnExportGif").addEventListener("click", () => {
+      if (state.mediaType === "none") { alert("Carregue uma imagem ou vídeo primeiro!"); return; }
+      if (typeof GIF === "undefined") { alert("gif.js não carregado."); return; }
+      (async () => {
+        const fps = parseInt(document.getElementById("rangeGifFps").value, 10);
+        const dur = parseInt(document.getElementById("rangeGifDur").value, 10);
+        const quality = parseInt(document.getElementById("rangeGifQual").value, 10);
+        const totalFrames = fps * dur;
+        const delay = Math.round(1000 / fps);
+        const name = document.getElementById("fileName").value.trim() || "pixel_gif";
+        const progressBar = document.getElementById("gifProgress");
+        const fill = progressBar.querySelector("div");
+        const gifStatus = document.getElementById("gifStatus");
+        const btn = document.getElementById("btnExportGif");
+        btn.disabled = true; btn.textContent = "⏳ Gerando GIF...";
+        progressBar.classList.add("active"); fill.style.width = "0%";
+        const wasLayersActive = state.layersActive;
+        state.layersActive = false;
+        const w = mainCanvas.width, h = mainCanvas.height;
+        const opts = getGlobalOptions();
+        const savedTime = state.synthTime, savedVidTime = videoEl.currentTime, wasPlaying = state.isPlaying;
+        const wasPaused = videoEl.paused;
+        videoEl.pause();
+        const workerScript = (typeof window.GIF_WORKER_SCRIPT !== "undefined") ? window.GIF_WORKER_SCRIPT : "gif.worker.js";
+        try {
+          const gif = new GIF({ workers: 2, quality: Math.max(1, 30 - quality), width: w, height: h, workerScript, transparent: "rgba(0,0,0,0)" });
+          gif.on("progress", (p) => { fill.style.width = `${p*100}%`; gifStatus.textContent = `Codificando... ${Math.round(p*100)}%`; });
+          gif.on("finished", (blob) => {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a"); a.href = url; a.download = `${name}.gif`; a.click();
+            URL.revokeObjectURL(url);
+            gifStatus.textContent = `✅ GIF pronto! (${totalFrames} frames)`;
+            statusBadge.textContent = "GIF exportado!";
+            btn.disabled = false; btn.textContent = "🎞️ Exportar GIF";
+            setTimeout(() => { progressBar.classList.remove("active"); }, 2000);
+          });
+          for (let i = 0; i < totalFrames; i++) {
+            const t = i / fps;
+            if (state.mediaType === "image" && state.currentImg) { offCtx.clearRect(0,0,w,h); offCtx.drawImage(state.currentImg,0,0,w,h); }
+            else if (state.mediaType === "video") {
+              await new Promise((resolve) => {
+                const target = Math.min(t, videoEl.duration || t);
+                if (Math.abs(videoEl.currentTime - target) < 0.01) { resolve(); return; }
+                videoEl.currentTime = target;
+                const onSeeked = () => { videoEl.removeEventListener("seeked", onSeeked); resolve(); };
+                videoEl.addEventListener("seeked", onSeeked);
+                setTimeout(resolve, 500);
+              });
+              offCtx.clearRect(0,0,w,h); offCtx.drawImage(videoEl,0,0,w,h);
+            } else if (state.mediaType === "synth") { desenharAnimacaoTeste(offCtx, w, h, t); }
+            const imgData = offCtx.getImageData(0,0,w,h).data;
+            window.EstiloRenderer.renderizar(ctx, imgData, w, h, opts);
+            gif.addFrame(ctx, { copy: true, delay });
+            fill.style.width = `${((i+1)/totalFrames)*100}%`;
+            gifStatus.textContent = `Gerando frames... ${i+1} / ${totalFrames}`;
+            if (i % 3 === 0) await new Promise(r => setTimeout(r, 0));
+          }
+          gifStatus.textContent = "Codificando GIF final...";
+          gif.render();
+        } catch (err) {
+          gifStatus.textContent = "❌ Erro: " + err.message;
+          btn.disabled = false; btn.textContent = "🎞️ Exportar GIF";
+          progressBar.classList.remove("active");
+        } finally {
+          if (state.mediaType === "synth") state.synthTime = savedTime;
+          if (state.mediaType === "video") { videoEl.currentTime = savedVidTime; if (!wasPaused && wasPlaying) videoEl.play(); }
+          state.isPlaying = wasPlaying;
+          state.layersActive = wasLayersActive;
+        }
+      })();
+    });
+
+    document.getElementById("btnTestImg").click();
+  }
+
+  init();
 })();
