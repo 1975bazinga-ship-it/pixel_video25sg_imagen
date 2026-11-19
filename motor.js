@@ -1115,7 +1115,24 @@
       }
       fileInput.value = "";
     });
-
+    // ========================================================================
+    // LISTENERS DOS SLIDERS DE FPS/DURAÇÃO/QUALIDADE (GIF e ZIP)
+    // ========================================================================
+    document.getElementById("rangeFps").addEventListener("input", (e) => {
+      document.getElementById("lblFps").textContent = e.target.value;
+    });
+    document.getElementById("rangeDur").addEventListener("input", (e) => {
+      document.getElementById("lblDur").textContent = e.target.value;
+    });
+    document.getElementById("rangeGifFps").addEventListener("input", (e) => {
+      document.getElementById("lblGifFps").textContent = e.target.value;
+    });
+    document.getElementById("rangeGifDur").addEventListener("input", (e) => {
+      document.getElementById("lblGifDur").textContent = e.target.value;
+    });
+    document.getElementById("rangeGifQual").addEventListener("input", (e) => {
+      document.getElementById("lblGifQual").textContent = e.target.value;
+    });
     document.getElementById("btnTestImg").addEventListener("click", () => {
       pararVideoAnterior();
       state.mediaType = "image"; state.layersActive = false;
