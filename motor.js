@@ -22,6 +22,10 @@
     animFrameId: null,
     layersAnimFrameId: null,
 
+    // Múltiplas imagens (frames)
+    frames: [],
+    currentFrameIndex: 0,
+
     bloco: 2,
     paletteKey: "original",
     estiloKey: "quadrado_media",
@@ -120,7 +124,119 @@
   }
 
   // ============================================================================
-  // RENDER RETRÔ (preview) — com contorno força
+  // MÚLTIPLAS IMAGENS (FRAMES)
+  // ============================================================================
+  function atualizarBarraFrames() {
+    const bar = document.getElementById("framesBar");
+    if (!bar) return;
+    const temVarios = state.frames.length > 1;
+    bar.style.display = temVarios ? "flex" : "none";
+    document.getElementById("lblFrameAtual").textContent =
+      `${state.currentFrameIndex + 1} / ${state.frames.length}`;
+  }
+
+  function irParaFrame(idx) {
+    if (state.frames.length === 0) return;
+    state.currentFrameIndex = Math.max(0, Math.min(state.frames.length - 1, idx));
+    state.currentImg = state.frames[state.currentFrameIndex].img;
+    state.mediaType = "image";
+    setCanvasSize(state.currentImg.naturalWidth || state.currentImg.width,
+                  state.currentImg.naturalHeight || state.currentImg.height);
+    atualizarBarraFrames();
+    statusBadge.textContent = `Frame ${state.currentFrameIndex + 1} / ${state.frames.length}: ${state.frames[state.currentFrameIndex].name}`;
+    if (state.layersActive) renderLayersFrame();
+    else renderRetroFrame();
+  }
+
+  function adicionarFrames(files) {
+    const promessas = [];
+    files.forEach((file) => {
+      if (!file.type.startsWith("image/")) return;
+      const p = new Promise((resolve) => {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => { state.frames.push({ img, name: file.name, url }); resolve(); };
+        img.onerror = () => resolve();
+        img.src = url;
+      });
+      promessas.push(p);
+    });
+    return Promise.all(promessas);
+  }
+
+  async function exportarTodosFramesZip() {
+    if (state.frames.length === 0) {
+      alert("Nenhuma imagem carregada. Abra múltiplas imagens primeiro.");
+      return;
+    }
+    if (typeof JSZip === "undefined") {
+      alert("JSZip não carregado.");
+      return;
+    }
+
+    const zip = new JSZip();
+    const nameBase = document.getElementById("fileName").value.trim() || "frame";
+    const progressBar = document.getElementById("zipProgress");
+    const fill = progressBar.querySelector("div");
+    const zipStatus = document.getElementById("zipStatus");
+    progressBar.classList.add("active");
+    fill.style.width = "0%";
+
+    const frameOriginal = state.currentFrameIndex;
+    const mediaTypeOriginal = state.mediaType;
+    const layersActiveOriginal = state.layersActive;
+
+    try {
+      for (let i = 0; i < state.frames.length; i++) {
+        state.currentFrameIndex = i;
+        state.currentImg = state.frames[i].img;
+        state.mediaType = "image";
+
+        let canvasFrame;
+        if (state.layersActive) {
+          canvasFrame = renderLayersFrameFullRes();
+        } else {
+          canvasFrame = renderRetroFrameFullRes();
+        }
+
+        const dataUrl = canvasFrame.toDataURL("image/png");
+        const base64 = dataUrl.split(",")[1];
+        const nome = `${nameBase}_${String(i + 1).padStart(4, "0")}.png`;
+        zip.file(nome, base64, { base64: true });
+
+        fill.style.width = `${((i + 1) / state.frames.length) * 100}%`;
+        zipStatus.textContent = `Processando frame ${i + 1} / ${state.frames.length}...`;
+
+        if (i % 3 === 0) await new Promise(r => setTimeout(r, 0));
+      }
+
+      zipStatus.textContent = "Compactando .zip...";
+      const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${nameBase}_todos_frames.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      zipStatus.textContent = `✅ ${state.frames.length} frames exportados em ZIP.`;
+      statusBadge.textContent = `Todos os ${state.frames.length} frames exportados!`;
+    } catch (err) {
+      console.error(err);
+      zipStatus.textContent = "❌ Erro: " + err.message;
+    } finally {
+      state.layersActive = layersActiveOriginal;
+      state.currentFrameIndex = frameOriginal;
+      state.mediaType = mediaTypeOriginal;
+      if (state.frames.length > 0) {
+        state.currentImg = state.frames[frameOriginal].img;
+        irParaFrame(frameOriginal);
+      }
+      setTimeout(() => { progressBar.classList.remove("active"); }, 2000);
+    }
+  }
+
+  // ============================================================================
+  // RENDER RETRÔ (preview)
   // ============================================================================
   function renderRetroFrame() {
     if (state.layersActive) return;
@@ -204,7 +320,7 @@
   }
 
   // ============================================================================
-  // RENDER RETRÔ EM ALTA RESOLUÇÃO (download)
+  // RENDER RETRÔ EM ALTA RESOLUÇÃO
   // ============================================================================
   function renderRetroFrameFullRes() {
     let W, H;
@@ -503,9 +619,6 @@
     c.fillStyle = "#7f1d1d"; c.fillRect(102,298,52,4); c.fillRect(166,298,52,4);
   }
 
-  // ============================================================================
-  // RENDER 7 CAMADAS (preview)
-  // ============================================================================
   function renderLayersFrame() {
     const px = state.bloco;
 
@@ -692,9 +805,6 @@
     }
   }
 
-  // ============================================================================
-  // RENDER 7 CAMADAS EM ALTA RESOLUÇÃO (download)
-  // ============================================================================
   function renderLayersFrameFullRes() {
     let W = 480, H = 320;
     if (state.mediaType === "image" && state.currentImg) {
@@ -973,7 +1083,7 @@
           videoEl.addEventListener("seeked", onSeeked);
           setTimeout(resolve, 500);
         });
-        renderLayersFrameFullRes && renderLayersFrame();
+        renderLayersFrame();
         const dataUrl = mainCanvas.toDataURL("image/png");
         zip.file(`frame_${String(i).padStart(4,"0")}.png`, dataUrl.split(",")[1], { base64: true });
         fill.style.width = `${((i+1)/totalFrames)*100}%`;
@@ -1082,15 +1192,26 @@
       if (state.layersActive) renderLayersFrame(); else renderRetroFrame();
     });
 
+    // ===== UPLOAD (aceita múltiplas imagens ou 1 vídeo) =====
     document.getElementById("btnUpload").addEventListener("click", () => fileInput.click());
     fileInput.addEventListener("change", (e) => {
-      const file = e.target.files[0]; if (!file) return;
-      const url = URL.createObjectURL(file); pararVideoAnterior();
-      state.layersActive = false;
+      const files = Array.from(e.target.files || []);
+      if (files.length === 0) return;
 
-      if (file.type.startsWith("video/")) {
-        state.mediaType = "video"; statusBadge.textContent = "Carregando vídeo...";
-        videoEl.src = url; videoEl.muted = document.getElementById("chkMute").checked; videoEl.loop = document.getElementById("chkLoop").checked;
+      const videoFile = files.find(f => f.type.startsWith("video/"));
+      if (videoFile) {
+        pararVideoAnterior();
+        state.frames = [];
+        state.currentFrameIndex = 0;
+        atualizarBarraFrames();
+        state.layersActive = false;
+
+        const url = URL.createObjectURL(videoFile);
+        state.mediaType = "video";
+        statusBadge.textContent = "Carregando vídeo...";
+        videoEl.src = url;
+        videoEl.muted = document.getElementById("chkMute").checked;
+        videoEl.loop = document.getElementById("chkLoop").checked;
         videoEl.onloadeddata = () => {
           setCanvasSize(videoEl.videoWidth, videoEl.videoHeight);
           videoEl.currentTime = 0;
@@ -1102,39 +1223,41 @@
           }).catch(() => { statusBadge.textContent = "Clique em Play"; renderRetroFrame(); });
         };
         videoEl.onerror = () => { statusBadge.textContent = "Erro ao abrir vídeo"; };
-      } else if (file.type.startsWith("image/")) {
-        state.mediaType = "image";
-        const img = new Image();
-        img.onload = () => {
-          state.currentImg = img;
-          setCanvasSize(img.width, img.height);
-          statusBadge.textContent = `Imagem (${img.width}x${img.height})`;
-          renderRetroFrame();
-        };
-        img.src = url;
+        fileInput.value = "";
+        return;
       }
+
+      // Só imagens: trata como frames múltiplos
+      pararVideoAnterior();
+      state.layersActive = false;
+
+      const jaTemFrames = state.frames.length > 0;
+      if (!jaTemFrames) {
+        state.frames = [];
+        state.currentFrameIndex = 0;
+      }
+      const iniciar = jaTemFrames ? state.frames.length : 0;
+
+      adicionarFrames(files).then(() => {
+        if (state.frames.length > 0) {
+          state.currentFrameIndex = Math.min(iniciar, state.frames.length - 1);
+          irParaFrame(state.currentFrameIndex);
+          const n = state.frames.length;
+          statusBadge.textContent = n > 1
+            ? `${n} imagens carregadas. Frame ${state.currentFrameIndex + 1} visível.`
+            : `Imagem (${state.currentImg.naturalWidth}x${state.currentImg.naturalHeight})`;
+        }
+      });
+
       fileInput.value = "";
     });
-    // ========================================================================
-    // LISTENERS DOS SLIDERS DE FPS/DURAÇÃO/QUALIDADE (GIF e ZIP)
-    // ========================================================================
-    document.getElementById("rangeFps").addEventListener("input", (e) => {
-      document.getElementById("lblFps").textContent = e.target.value;
-    });
-    document.getElementById("rangeDur").addEventListener("input", (e) => {
-      document.getElementById("lblDur").textContent = e.target.value;
-    });
-    document.getElementById("rangeGifFps").addEventListener("input", (e) => {
-      document.getElementById("lblGifFps").textContent = e.target.value;
-    });
-    document.getElementById("rangeGifDur").addEventListener("input", (e) => {
-      document.getElementById("lblGifDur").textContent = e.target.value;
-    });
-    document.getElementById("rangeGifQual").addEventListener("input", (e) => {
-      document.getElementById("lblGifQual").textContent = e.target.value;
-    });
+
     document.getElementById("btnTestImg").addEventListener("click", () => {
       pararVideoAnterior();
+      state.frames = [];
+      state.currentFrameIndex = 0;
+      atualizarBarraFrames();
+
       state.mediaType = "image"; state.layersActive = false;
       setCanvasSize(480, 320);
       const temp = document.createElement("canvas"); temp.width = 480; temp.height = 320;
@@ -1154,6 +1277,10 @@
 
     document.getElementById("btnTestVid").addEventListener("click", () => {
       pararVideoAnterior();
+      state.frames = [];
+      state.currentFrameIndex = 0;
+      atualizarBarraFrames();
+
       state.mediaType = "synth"; state.layersActive = false;
       state.synthTime = 0; state.isPlaying = true;
       setCanvasSize(480, 320);
@@ -1163,6 +1290,10 @@
     });
 
     document.getElementById("btnLayersDemoChar").addEventListener("click", () => {
+      state.frames = [];
+      state.currentFrameIndex = 0;
+      atualizarBarraFrames();
+
       state.layersActive = true;
       state.mediaType = "demo";
       statusBadge.textContent = "7 Camadas: Personagem Exemplo";
@@ -1218,9 +1349,24 @@
       mainCanvas.style.height = `${Math.round(mainCanvas.height*(z/100))}px`;
     });
 
-    // ========================================================================
-    // DOWNLOAD EM RESOLUÇÃO ORIGINAL (Retrô + 7 Camadas + Synth)
-    // ========================================================================
+    // Listeners dos sliders (FPS, Duração, Qualidade)
+    document.getElementById("rangeFps").addEventListener("input", (e) => {
+      document.getElementById("lblFps").textContent = e.target.value;
+    });
+    document.getElementById("rangeDur").addEventListener("input", (e) => {
+      document.getElementById("lblDur").textContent = e.target.value;
+    });
+    document.getElementById("rangeGifFps").addEventListener("input", (e) => {
+      document.getElementById("lblGifFps").textContent = e.target.value;
+    });
+    document.getElementById("rangeGifDur").addEventListener("input", (e) => {
+      document.getElementById("lblGifDur").textContent = e.target.value;
+    });
+    document.getElementById("rangeGifQual").addEventListener("input", (e) => {
+      document.getElementById("lblGifQual").textContent = e.target.value;
+    });
+
+    // Download imagem/frame (resolução original)
     document.getElementById("btnDownloadImg").addEventListener("click", () => {
       const fmt = document.getElementById("exportFormat").value;
       const name = document.getElementById("fileName").value.trim() || "pixel_art";
@@ -1233,7 +1379,7 @@
           canvasToExport = renderRetroFrameFullRes();
         }
       } catch (err) {
-        console.warn("Falha ao gerar alta resolução, usando canvas atual:", err);
+        console.warn("Falha ao gerar alta resolução:", err);
         canvasToExport = mainCanvas;
       }
 
@@ -1392,6 +1538,21 @@
           state.layersActive = wasLayersActive;
         }
       })();
+    });
+
+    // Navegação de frames
+    const btnPrev = document.getElementById("btnPrevFrame");
+    const btnNext = document.getElementById("btnNextFrame");
+    const btnExportAll = document.getElementById("btnExportAllFrames");
+    if (btnPrev) btnPrev.addEventListener("click", () => irParaFrame(state.currentFrameIndex - 1));
+    if (btnNext) btnNext.addEventListener("click", () => irParaFrame(state.currentFrameIndex + 1));
+    if (btnExportAll) btnExportAll.addEventListener("click", exportarTodosFramesZip);
+
+    document.addEventListener("keydown", (e) => {
+      if (state.frames.length <= 1) return;
+      if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+      if (e.key === "ArrowLeft") irParaFrame(state.currentFrameIndex - 1);
+      else if (e.key === "ArrowRight") irParaFrame(state.currentFrameIndex + 1);
     });
 
     document.getElementById("btnTestImg").click();
