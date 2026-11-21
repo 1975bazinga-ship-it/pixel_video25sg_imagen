@@ -42,7 +42,16 @@
 
     .layer-card { background: #17171f; border: 1px solid #30303f; border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 7px; transition: border-left-color 0.2s; }
     .layer-header { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 700; color: #f4f4f5; }
-    .swatches-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+        .swatches-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr); /* 4 colunas */
+  gap: 6px;
+  width: 100%;
+}
+    .swatch-slot { padding: 3px; }
+    .swatch-slot .btn-drop { font-size: 10px; padding: 2px 3px; }
+    .swatch-slot .btn-clear-slot { font-size: 9px; padding: 1px 3px; }
+    .swatch-slot input[type="color"] { width: 22px; height: 20px; }
     .swatch-slot { background: #22222c; border: 1px solid #383848; border-radius: 4px; padding: 4px; display: flex; flex-direction: column; align-items: center; gap: 4px; transition: transform 0.15s; }
     .swatch-slot.disabled-slot { opacity: 0.45; }
     .swatch-top { display: flex; align-items: center; gap: 3px; width: 100%; justify-content: space-between; }
@@ -139,7 +148,7 @@
       <label>FPS: <strong id="lblGifFps">10</strong></label>
       <input type="range" id="rangeGifFps" min="2" max="30" value="10">
       <label>Duração (s): <strong id="lblGifDur">3</strong></label>
-      <input type="range" id="rangeGifDur" min="1" max="20" value="3">
+      <input type="range" id="rangeGifDur" min="1" max="30" value="3">
       <label>Qualidade: <strong id="lblGifQual">10</strong></label>
       <input type="range" id="rangeGifQual" min="1" max="30" value="10">
       <button class="primary" id="btnExportGif" style="width:100%">🎞️ Exportar GIF</button>
@@ -150,7 +159,7 @@
     <div class="divider"></div>
 
     <section>
-      <h2>🎨 7 Camadas (4 Conta-Gotas Cada)</h2>
+      <h2>🎨 20 Camadas (8 Conta-Gotas Cada)</h2>
       <p class="hint">
         Cada camada tem <strong>4 conta-gotas</strong> e uma <strong>paleta/estilo próprios</strong>.
         O que não for capturado por nenhuma camada usa os controles globais acima.

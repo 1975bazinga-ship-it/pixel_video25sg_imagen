@@ -22,7 +22,6 @@
     animFrameId: null,
     layersAnimFrameId: null,
 
-    // Múltiplas imagens (frames)
     frames: [],
     currentFrameIndex: 0,
 
@@ -124,7 +123,7 @@
   }
 
   // ============================================================================
-  // MÚLTIPLAS IMAGENS (FRAMES)
+  // MÚLTIPLAS IMAGENS
   // ============================================================================
   function atualizarBarraFrames() {
     const bar = document.getElementById("framesBar");
@@ -174,6 +173,12 @@
       return;
     }
 
+    const fps = parseInt(document.getElementById("rangeFps").value, 10);
+    const dur = parseInt(document.getElementById("rangeDur").value, 10);
+    const totalFramesDesejados = fps * dur;
+    const totalImagens = state.frames.length;
+    const totalFrames = Math.max(totalFramesDesejados, totalImagens);
+
     const zip = new JSZip();
     const nameBase = document.getElementById("fileName").value.trim() || "frame";
     const progressBar = document.getElementById("zipProgress");
@@ -187,9 +192,10 @@
     const layersActiveOriginal = state.layersActive;
 
     try {
-      for (let i = 0; i < state.frames.length; i++) {
-        state.currentFrameIndex = i;
-        state.currentImg = state.frames[i].img;
+      for (let i = 0; i < totalFrames; i++) {
+        const imgIdx = i % totalImagens;
+        state.currentFrameIndex = imgIdx;
+        state.currentImg = state.frames[imgIdx].img;
         state.mediaType = "image";
 
         let canvasFrame;
@@ -204,8 +210,8 @@
         const nome = `${nameBase}_${String(i + 1).padStart(4, "0")}.png`;
         zip.file(nome, base64, { base64: true });
 
-        fill.style.width = `${((i + 1) / state.frames.length) * 100}%`;
-        zipStatus.textContent = `Processando frame ${i + 1} / ${state.frames.length}...`;
+        fill.style.width = `${((i + 1) / totalFrames) * 100}%`;
+        zipStatus.textContent = `Frame ${i + 1} / ${totalFrames} (${fps} fps × ${dur}s)...`;
 
         if (i % 3 === 0) await new Promise(r => setTimeout(r, 0));
       }
@@ -215,11 +221,11 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${nameBase}_todos_frames.zip`;
+      a.download = `${nameBase}_${totalFrames}frames.zip`;
       a.click();
       URL.revokeObjectURL(url);
-      zipStatus.textContent = `✅ ${state.frames.length} frames exportados em ZIP.`;
-      statusBadge.textContent = `Todos os ${state.frames.length} frames exportados!`;
+      zipStatus.textContent = `✅ ${totalFrames} frames exportados (${fps} fps × ${dur}s).`;
+      statusBadge.textContent = `Todos os ${totalFrames} frames exportados!`;
     } catch (err) {
       console.error(err);
       zipStatus.textContent = "❌ Erro: " + err.message;
@@ -452,17 +458,52 @@
   // ============================================================================
   // 7 CAMADAS
   // ============================================================================
+  // 20 CAMADAS COM 8 CONTA-GOTAS CADA
   const LAYER_DEFINITIONS = [
-    { id: "hair", name: "1. Cabelo", defaultColor: "#3b2314", defaultPalette: "hair_anime", defaultStyle: "bayer4" },
-    { id: "skin", name: "2. Pele", defaultColor: "#f2b894", defaultPalette: "skin_tones", defaultStyle: "flat" },
-    { id: "top", name: "3. Roupa Sup.", defaultColor: "#2563eb", defaultPalette: "pico8", defaultStyle: "bayer2" },
-    { id: "bottom", name: "4. Roupa Inf.", defaultColor: "#1e293b", defaultPalette: "endesga32", defaultStyle: "checker" },
-    { id: "shoes", name: "5. Sapatos", defaultColor: "#dc2626", defaultPalette: "sweetie16", defaultStyle: "bevel" },
-    { id: "eyes", name: "6. Olhos", defaultColor: "#10b981", defaultPalette: "cyberpunk", defaultStyle: "flat" },
-    { id: "accessory", name: "7. Acessório", defaultColor: "#eab308", defaultPalette: "gold_metal", defaultStyle: "bayer4" }
+    { id: "hair",        name: "1. Cabelo",          defaultColor: "#3b2314", defaultPalette: "hair_anime",   defaultStyle: "bayer4" },
+    { id: "hair2",       name: "2. Cabelo Secundário", defaultColor: "#9a3412", defaultPalette: "hair_anime",   defaultStyle: "bayer2" },
+    { id: "skin",        name: "3. Pele / Rosto",    defaultColor: "#f2b894", defaultPalette: "skin_tones",   defaultStyle: "flat" },
+    { id: "skin_shadow", name: "4. Sombra da Pele",  defaultColor: "#c97b5d", defaultPalette: "skin_tones",   defaultStyle: "flat" },
+    { id: "eyes",        name: "5. Olhos / Íris",    defaultColor: "#10b981", defaultPalette: "cyberpunk",    defaultStyle: "flat" },
+    { id: "eyebrows",    name: "6. Sobrancelhas",    defaultColor: "#3b2314", defaultPalette: "hair_anime",   defaultStyle: "flat" },
+    { id: "mouth",       name: "7. Boca / Lábios",   defaultColor: "#b91c1c", defaultPalette: "sweetie16",    defaultStyle: "flat" },
+    { id: "top",         name: "8. Roupa Superior",  defaultColor: "#2563eb", defaultPalette: "pico8",        defaultStyle: "bayer2" },
+    { id: "top_detail",  name: "9. Detalhe da Roupa", defaultColor: "#1e3a8a", defaultPalette: "cyberpunk",   defaultStyle: "bevel" },
+    { id: "bottom",      name: "10. Roupa Inferior", defaultColor: "#1e293b", defaultPalette: "endesga32",    defaultStyle: "checker" },
+    { id: "belt",        name: "11. Cinto / Faixa",  defaultColor: "#eab308", defaultPalette: "gold_metal",   defaultStyle: "bevel" },
+    { id: "shoes",       name: "12. Sapatos",        defaultColor: "#dc2626", defaultPalette: "sweetie16",    defaultStyle: "bevel" },
+    { id: "gloves",      name: "13. Luvas",          defaultColor: "#4b5563", defaultPalette: "armor_steel",  defaultStyle: "flat" },
+    { id: "armor",       name: "14. Armadura",       defaultColor: "#6b7280", defaultPalette: "armor_steel",  defaultStyle: "bevel" },
+    { id: "cape",        name: "15. Capa / Manto",   defaultColor: "#7e22ce", defaultPalette: "cyberpunk",    defaultStyle: "bayer4" },
+    { id: "accessory",   name: "16. Acessório",      defaultColor: "#a855f7", defaultPalette: "gold_metal",   defaultStyle: "bayer4" },
+    { id: "weapon",      name: "17. Arma",           defaultColor: "#94a3b8", defaultPalette: "armor_steel",  defaultStyle: "diagonal" },
+    { id: "aura",        name: "18. Aura / Magia",   defaultColor: "#22d3ee", defaultPalette: "ice_frost",    defaultStyle: "bayer8" },
+    { id: "background",  name: "19. Fundo",          defaultColor: "#1e293b", defaultPalette: "none",         defaultStyle: "flat" },
+    { id: "extra",       name: "20. Extra / Outro",  defaultColor: "#f472b6", defaultPalette: "pastel_dream", defaultStyle: "bayer4" }
   ];
 
+  const SLOTS_PER_LAYER = 8;
+
   function initLayers() {
+    state.layers = LAYER_DEFINITIONS.map((def, idx) => {
+      const colors = [];
+      for (let i = 0; i < SLOTS_PER_LAYER; i++) {
+        colors.push({
+          active: i === 0,
+          hex: i === 0 ? def.defaultColor : "#888888"
+        });
+      }
+      return {
+        ...def,
+        enabled: idx < 6,   // 6 primeiras ativas por padrão
+        colors,
+        tolerance: 45,
+        palette: def.defaultPalette,
+        style: def.defaultStyle
+      };
+    });
+    buildLayersUI();
+  } {
     state.layers = LAYER_DEFINITIONS.map((def, idx) => ({
       ...def,
       enabled: idx < 3,
@@ -504,13 +545,13 @@
         const box = document.createElement("div");
         box.className = "swatch-slot" + (slot.active ? "" : " disabled-slot");
         box.id = `slot_box_${layerIdx}_${slotIdx}`;
-        box.innerHTML = `
-          <div class="swatch-top">
-            <input type="checkbox" id="slot_chk_${layerIdx}_${slotIdx}" ${slot.active ? "checked" : ""}>
-            <input type="color" id="slot_col_${layerIdx}_${slotIdx}" value="${slot.hex}">
-            <button class="btn-clear-slot" id="slot_clr_${layerIdx}_${slotIdx}">×</button>
+                box.innerHTML = `
+          <div class="swatch-top" style="justify-content:space-between; gap:2px; width:100%;">
+            <input type="checkbox" id="slot_chk_${layerIdx}_${slotIdx}" ${slot.active ? "checked" : ""} style="width:14px;height:14px;">
+            <input type="color" id="slot_col_${layerIdx}_${slotIdx}" value="${slot.hex}" style="width:22px;height:20px;">
+            <button class="btn-clear-slot" id="slot_clr_${layerIdx}_${slotIdx}" style="padding:2px 4px;">×</button>
           </div>
-          <button class="btn-drop" id="slot_drop_${layerIdx}_${slotIdx}">💧 #${slotIdx + 1}</button>
+          <button class="btn-drop" id="slot_drop_${layerIdx}_${slotIdx}" title="Conta-gotas #${slotIdx + 1}">💧${slotIdx + 1}</button>
         `;
         grid.appendChild(box);
       });
@@ -1015,41 +1056,9 @@
     renderLayersFrame();
   });
 
-  function createZipBlob(files) {
-    const encoder = new TextEncoder();
-    const centralDir = [], fileChunks = [];
-    let offset = 0;
-    const crcTable = new Uint32Array(256);
-    for (let i = 0; i < 256; i++) { let c = i; for (let k = 0; k < 8; k++) c = (c&1)?(0xedb88320^(c>>>1)):(c>>>1); crcTable[i] = c; }
-    function crc32(buf) { let crc = 0xffffffff; for (let i = 0; i < buf.length; i++) crc = crcTable[(crc ^ buf[i]) & 0xff] ^ (crc >>> 8); return (crc ^ 0xffffffff) >>> 0; }
-    for (const file of files) {
-      const nameBytes = encoder.encode(file.name);
-      const data = file.data;
-      const crc = crc32(data);
-      const lh = new Uint8Array(30 + nameBytes.length);
-      const lv = new DataView(lh.buffer);
-      lv.setUint32(0, 0x04034b50, true); lv.setUint16(4, 20, true);
-      lv.setUint32(14, crc, true); lv.setUint32(18, data.length, true); lv.setUint32(22, data.length, true);
-      lv.setUint16(26, nameBytes.length, true);
-      lh.set(nameBytes, 30);
-      fileChunks.push(lh, data);
-      const ch = new Uint8Array(46 + nameBytes.length);
-      const cv = new DataView(ch.buffer);
-      cv.setUint32(0, 0x02014b50, true); cv.setUint16(4, 20, true); cv.setUint16(6, 20, true);
-      cv.setUint32(16, crc, true); cv.setUint32(20, data.length, true); cv.setUint32(24, data.length, true);
-      cv.setUint16(28, nameBytes.length, true); cv.setUint32(42, offset, true);
-      ch.set(nameBytes, 46);
-      centralDir.push(ch);
-      offset += lh.length + data.length;
-    }
-    let cdSize = 0; centralDir.forEach(c => cdSize += c.length);
-    const eocd = new Uint8Array(22);
-    const ev = new DataView(eocd.buffer);
-    ev.setUint32(0, 0x06054b50, true); ev.setUint16(8, files.length, true); ev.setUint16(10, files.length, true);
-    ev.setUint32(12, cdSize, true); ev.setUint32(16, offset, true);
-    return new Blob([...fileChunks, ...centralDir, eocd], { type: "application/zip" });
-  }
-
+  // ============================================================================
+  // EXPORTAR ZIP — 7 CAMADAS (VÍDEO) — CORRIGIDO
+  // ============================================================================
   async function exportLayersZip() {
     if (state.mediaType !== "video" || !videoEl.duration) {
       alert("Carregue um vídeo primeiro para exportar a sequência PNG em .ZIP.");
@@ -1058,6 +1067,7 @@
     const fps = parseInt(document.getElementById("rangeFps").value, 10);
     const dur = parseInt(document.getElementById("rangeDur").value, 10);
     const totalFrames = fps * dur;
+    const videoDuration = videoEl.duration;
     const name = document.getElementById("fileName").value.trim() || "pixel_sequence";
 
     const zip = new JSZip();
@@ -1072,22 +1082,35 @@
     videoEl.pause();
     state.layersActive = true;
 
+    function seekVideo(t) {
+      return new Promise((resolve) => {
+        const target = Math.max(0, Math.min(videoDuration - 0.001, t));
+        if (Math.abs(videoEl.currentTime - target) < 0.005) { resolve(); return; }
+        let done = false;
+        const onSeeked = () => {
+          if (done) return;
+          done = true;
+          videoEl.removeEventListener("seeked", onSeeked);
+          setTimeout(resolve, 30);
+        };
+        videoEl.addEventListener("seeked", onSeeked);
+        videoEl.currentTime = target;
+        setTimeout(() => {
+          if (!done) { done = true; videoEl.removeEventListener("seeked", onSeeked); resolve(); }
+        }, 1000);
+      });
+    }
+
     try {
       for (let i = 0; i < totalFrames; i++) {
-        const t = i / fps;
-        await new Promise((resolve) => {
-          const target = Math.min(t, videoEl.duration || t);
-          if (Math.abs(videoEl.currentTime - target) < 0.01) { resolve(); return; }
-          videoEl.currentTime = target;
-          const onSeeked = () => { videoEl.removeEventListener("seeked", onSeeked); resolve(); };
-          videoEl.addEventListener("seeked", onSeeked);
-          setTimeout(resolve, 500);
-        });
+        const t = (i / fps) % videoDuration;
+        await seekVideo(t);
+
         renderLayersFrame();
         const dataUrl = mainCanvas.toDataURL("image/png");
         zip.file(`frame_${String(i).padStart(4,"0")}.png`, dataUrl.split(",")[1], { base64: true });
         fill.style.width = `${((i+1)/totalFrames)*100}%`;
-        statusEl.textContent = `${i+1} / ${totalFrames} frames`;
+        statusEl.textContent = `${i+1} / ${totalFrames} frames (t=${t.toFixed(2)}s)`;
         if (i % 3 === 0) await new Promise(r => setTimeout(r, 0));
       }
       statusEl.textContent = "Compactando .zip...";
@@ -1098,6 +1121,7 @@
       statusEl.textContent = `✅ Pronto! ${totalFrames} frames.`;
       statusBadge.textContent = "Sequência 7 Camadas .ZIP exportada!";
     } catch (err) {
+      console.error(err);
       statusEl.textContent = "❌ Erro: " + err.message;
     } finally {
       if (wasPlaying) { videoEl.play(); startLayersVideoLoop(); }
@@ -1192,7 +1216,6 @@
       if (state.layersActive) renderLayersFrame(); else renderRetroFrame();
     });
 
-    // ===== UPLOAD (aceita múltiplas imagens ou 1 vídeo) =====
     document.getElementById("btnUpload").addEventListener("click", () => fileInput.click());
     fileInput.addEventListener("change", (e) => {
       const files = Array.from(e.target.files || []);
@@ -1227,7 +1250,6 @@
         return;
       }
 
-      // Só imagens: trata como frames múltiplos
       pararVideoAnterior();
       state.layersActive = false;
 
@@ -1349,7 +1371,6 @@
       mainCanvas.style.height = `${Math.round(mainCanvas.height*(z/100))}px`;
     });
 
-    // Listeners dos sliders (FPS, Duração, Qualidade)
     document.getElementById("rangeFps").addEventListener("input", (e) => {
       document.getElementById("lblFps").textContent = e.target.value;
     });
@@ -1366,7 +1387,6 @@
       document.getElementById("lblGifQual").textContent = e.target.value;
     });
 
-    // Download imagem/frame (resolução original)
     document.getElementById("btnDownloadImg").addEventListener("click", () => {
       const fmt = document.getElementById("exportFormat").value;
       const name = document.getElementById("fileName").value.trim() || "pixel_art";
@@ -1410,10 +1430,14 @@
       statusBadge.textContent = "Gravando vídeo...";
     });
 
+    // ========================================================================
+    // EXPORTAR ZIP — RETRÔ (VÍDEO) — CORRIGIDO
+    // ========================================================================
     document.getElementById("btnExportZip").addEventListener("click", () => {
       if (state.layersActive) { exportLayersZip(); return; }
       if (state.mediaType === "none") { alert("Carregue uma imagem ou vídeo primeiro!"); return; }
       if (typeof JSZip === "undefined") { alert("JSZip não carregado."); return; }
+
       (async () => {
         const fps = parseInt(document.getElementById("rangeFps").value, 10);
         const dur = parseInt(document.getElementById("rangeDur").value, 10);
@@ -1426,25 +1450,49 @@
         const btn = document.getElementById("btnExportZip");
         btn.disabled = true; btn.textContent = "⏳ Gerando...";
         progressBar.classList.add("active"); fill.style.width = "0%";
+
         const savedTime = state.synthTime, savedVidTime = videoEl.currentTime, wasPlaying = state.isPlaying;
         const savedPaused = videoEl.paused;
         videoEl.pause();
+
+        const videoDuration = videoEl.duration || 0;
+
+        function seekVideo(t) {
+          return new Promise((resolve) => {
+            const target = Math.max(0, Math.min(videoDuration - 0.001, t));
+            if (Math.abs(videoEl.currentTime - target) < 0.005) { resolve(); return; }
+            let done = false;
+            const onSeeked = () => {
+              if (done) return;
+              done = true;
+              videoEl.removeEventListener("seeked", onSeeked);
+              setTimeout(resolve, 30);
+            };
+            videoEl.addEventListener("seeked", onSeeked);
+            videoEl.currentTime = target;
+            setTimeout(() => {
+              if (!done) { done = true; videoEl.removeEventListener("seeked", onSeeked); resolve(); }
+            }, 1000);
+          });
+        }
+
         try {
           for (let i = 0; i < totalFrames; i++) {
-            const t = i / fps;
             let frameCanvas;
-            if (state.mediaType === "image" && state.currentImg) { frameCanvas = renderRetroFrameFullRes(); }
-            else if (state.mediaType === "video") {
-              await new Promise((resolve) => {
-                const target = Math.min(t, videoEl.duration || t);
-                if (Math.abs(videoEl.currentTime - target) < 0.01) { resolve(); return; }
-                videoEl.currentTime = target;
-                const onSeeked = () => { videoEl.removeEventListener("seeked", onSeeked); resolve(); };
-                videoEl.addEventListener("seeked", onSeeked);
-                setTimeout(resolve, 500);
-              });
+            if (state.mediaType === "image" && state.currentImg) {
               frameCanvas = renderRetroFrameFullRes();
-            } else if (state.mediaType === "synth") { frameCanvas = renderRetroFrameFullRes(); }
+            } else if (state.mediaType === "video") {
+              const t = (i / fps) % videoDuration;
+              await seekVideo(t);
+              frameCanvas = renderRetroFrameFullRes();
+            } else if (state.mediaType === "synth") {
+              const t = (i / fps) % 25;
+              state.synthTime = t;
+              frameCanvas = renderRetroFrameFullRes();
+            } else {
+              continue;
+            }
+
             zip.file(`frame_${String(i).padStart(4,"0")}.png`, frameCanvas.toDataURL("image/png").split(",")[1], { base64: true });
             fill.style.width = `${((i+1)/totalFrames)*100}%`;
             zipStatus.textContent = `${i+1} / ${totalFrames} frames`;
@@ -1457,8 +1505,10 @@
           URL.revokeObjectURL(url);
           zipStatus.textContent = `✅ Pronto! ${totalFrames} frames.`;
           statusBadge.textContent = "Sequência .ZIP exportada!";
-        } catch (err) { zipStatus.textContent = "❌ Erro: " + err.message; }
-        finally {
+        } catch (err) {
+          console.error(err);
+          zipStatus.textContent = "❌ Erro: " + err.message;
+        } finally {
           if (state.mediaType === "synth") state.synthTime = savedTime;
           if (state.mediaType === "video") { videoEl.currentTime = savedVidTime; if (!savedPaused && wasPlaying) videoEl.play(); }
           state.isPlaying = wasPlaying;
@@ -1491,6 +1541,27 @@
         const savedTime = state.synthTime, savedVidTime = videoEl.currentTime, wasPlaying = state.isPlaying;
         const wasPaused = videoEl.paused;
         videoEl.pause();
+
+        const videoDuration = videoEl.duration || 0;
+        function seekVideo(t) {
+          return new Promise((resolve) => {
+            const target = Math.max(0, Math.min(videoDuration - 0.001, t));
+            if (Math.abs(videoEl.currentTime - target) < 0.005) { resolve(); return; }
+            let done = false;
+            const onSeeked = () => {
+              if (done) return;
+              done = true;
+              videoEl.removeEventListener("seeked", onSeeked);
+              setTimeout(resolve, 30);
+            };
+            videoEl.addEventListener("seeked", onSeeked);
+            videoEl.currentTime = target;
+            setTimeout(() => {
+              if (!done) { done = true; videoEl.removeEventListener("seeked", onSeeked); resolve(); }
+            }, 1000);
+          });
+        }
+
         const workerScript = (typeof window.GIF_WORKER_SCRIPT !== "undefined") ? window.GIF_WORKER_SCRIPT : "gif.worker.js";
         try {
           const gif = new GIF({ workers: 2, quality: Math.max(1, 30 - quality), width: w, height: h, workerScript, transparent: "rgba(0,0,0,0)" });
@@ -1508,14 +1579,8 @@
             const t = i / fps;
             if (state.mediaType === "image" && state.currentImg) { offCtx.clearRect(0,0,w,h); offCtx.drawImage(state.currentImg,0,0,w,h); }
             else if (state.mediaType === "video") {
-              await new Promise((resolve) => {
-                const target = Math.min(t, videoEl.duration || t);
-                if (Math.abs(videoEl.currentTime - target) < 0.01) { resolve(); return; }
-                videoEl.currentTime = target;
-                const onSeeked = () => { videoEl.removeEventListener("seeked", onSeeked); resolve(); };
-                videoEl.addEventListener("seeked", onSeeked);
-                setTimeout(resolve, 500);
-              });
+              const target = videoDuration ? (t % videoDuration) : 0;
+              await seekVideo(target);
               offCtx.clearRect(0,0,w,h); offCtx.drawImage(videoEl,0,0,w,h);
             } else if (state.mediaType === "synth") { desenharAnimacaoTeste(offCtx, w, h, t); }
             const imgData = offCtx.getImageData(0,0,w,h).data;
@@ -1540,7 +1605,6 @@
       })();
     });
 
-    // Navegação de frames
     const btnPrev = document.getElementById("btnPrevFrame");
     const btnNext = document.getElementById("btnNextFrame");
     const btnExportAll = document.getElementById("btnExportAllFrames");
