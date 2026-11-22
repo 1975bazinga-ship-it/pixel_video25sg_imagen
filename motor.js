@@ -15,6 +15,9 @@
   const rangeZoom = document.getElementById("rangeZoom");
 
   const state = {
+	      // ... (suas outras variáveis) ...
+    isPlayingFrames: false,
+    playFramesInterval: null,
     mediaType: "none",
     currentImg: null,
     synthTime: 0,
@@ -1618,7 +1621,57 @@
       if (e.key === "ArrowLeft") irParaFrame(state.currentFrameIndex - 1);
       else if (e.key === "ArrowRight") irParaFrame(state.currentFrameIndex + 1);
     });
+    // ========================================================================
+    // PLAYER DA SEQUÊNCIA DE FRAMES
+    // ========================================================================
+    document.getElementById("btnPlayFrames").addEventListener("click", () => {
+      const btn = document.getElementById("btnPlayFrames");
+      
+      if (state.isPlayingFrames) {
+        // PAUSAR
+        clearInterval(state.playFramesInterval);
+        state.isPlayingFrames = false;
+        btn.textContent = "▶ Play";
+        btn.classList.remove("danger");
+        btn.classList.add("primary");
+      } else {
+        // DAR PLAY
+        if (state.frames.length <= 1) {
+          alert("Abra múltiplas imagens para visualizar a animação.");
+          return;
+        }
+        
+        state.isPlayingFrames = true;
+        btn.textContent = "⏸ Pause";
+        btn.classList.remove("primary");
+        btn.classList.add("danger");
 
+        // Pega o FPS definido na barra de exportação (padrão 12 se estiver vazio)
+        const fpsInput = document.getElementById("rangeFps").value;
+        const fps = parseInt(fpsInput, 10) || 12;
+        const msPerFrame = 1000 / fps;
+
+        state.playFramesInterval = setInterval(() => {
+          let proximoFrame = state.currentFrameIndex + 1;
+          if (proximoFrame >= state.frames.length) {
+            proximoFrame = 0; // Volta pro início
+          }
+          irParaFrame(proximoFrame);
+        }, msPerFrame);
+      }
+    });
+
+    // Garante que a animação pare se o usuário trocar de imagem ou clicar em "Imagem Teste"
+    document.getElementById("btnTestImg").addEventListener("click", () => {
+      clearInterval(state.playFramesInterval);
+      state.isPlayingFrames = false;
+      const btn = document.getElementById("btnPlayFrames");
+      if(btn) {
+        btn.textContent = "▶ Play";
+        btn.classList.add("primary");
+        btn.classList.remove("danger");
+      }
+    });
     document.getElementById("btnTestImg").click();
   }
 
