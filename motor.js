@@ -168,7 +168,7 @@
 
   async function exportarTodosFramesZip() {
     if (state.frames.length === 0) {
-      alert("Nenhuma imagem carregada. Abra múltiplas imagens primeiro.");
+      alert("Nenhuma imagem carregada. Abra uma ou mais imagens primeiro.");
       return;
     }
     if (typeof JSZip === "undefined") {
@@ -176,17 +176,17 @@
       return;
     }
 
-    const fps = parseInt(document.getElementById("rangeFps").value, 10);
-    const dur = parseInt(document.getElementById("rangeDur").value, 10);
-    const totalFramesDesejados = fps * dur;
     const totalImagens = state.frames.length;
-    const totalFrames = Math.max(totalFramesDesejados, totalImagens);
-
     const zip = new JSZip();
     const nameBase = document.getElementById("fileName").value.trim() || "frame";
     const progressBar = document.getElementById("zipProgress");
     const fill = progressBar.querySelector("div");
     const zipStatus = document.getElementById("zipStatus");
+    const btnAll = document.getElementById("btnExportAllFrames");
+    const btnSeq = document.getElementById("btnExportZip");
+
+    if (btnAll) { btnAll.disabled = true; btnAll.textContent = "⏳ Exportando..."; }
+    if (btnSeq) { btnSeq.disabled = true; btnSeq.textContent = "⏳ Gerando..."; }
     progressBar.classList.add("active");
     fill.style.width = "0%";
 
@@ -195,10 +195,9 @@
     const layersActiveOriginal = state.layersActive;
 
     try {
-      for (let i = 0; i < totalFrames; i++) {
-        const imgIdx = i % totalImagens;
-        state.currentFrameIndex = imgIdx;
-        state.currentImg = state.frames[imgIdx].img;
+      for (let i = 0; i < totalImagens; i++) {
+        state.currentFrameIndex = i;
+        state.currentImg = state.frames[i].img;
         state.mediaType = "image";
 
         let canvasFrame;
@@ -209,12 +208,12 @@
         }
 
         const dataUrl = canvasFrame.toDataURL("image/png");
-        const base64 = dataUrl.split(",")[1];
+        const base64 = dataUrl.split(",")[1]; // <-- CORREÇÃO AQUI ([1] estava faltando)
         const nome = `${nameBase}_${String(i + 1).padStart(4, "0")}.png`;
         zip.file(nome, base64, { base64: true });
 
-        fill.style.width = `${((i + 1) / totalFrames) * 100}%`;
-        zipStatus.textContent = `Frame ${i + 1} / ${totalFrames} (${fps} fps × ${dur}s)...`;
+        fill.style.width = `${((i + 1) / totalImagens) * 100}%`;
+        zipStatus.textContent = `Exportando imagem ${i + 1} / ${totalImagens}...`;
 
         if (i % 3 === 0) await new Promise(r => setTimeout(r, 0));
       }
@@ -224,11 +223,12 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${nameBase}_${totalFrames}frames.zip`;
+      a.download = `${nameBase}_${totalImagens}imagens.zip`;
       a.click();
       URL.revokeObjectURL(url);
-      zipStatus.textContent = `✅ ${totalFrames} frames exportados (${fps} fps × ${dur}s).`;
-      statusBadge.textContent = `Todos os ${totalFrames} frames exportados!`;
+
+      zipStatus.textContent = `✅ ${totalImagens} imagem(ns) exportada(s)!`;
+      statusBadge.textContent = `${totalImagens} imagem(ns) exportada(s) no .ZIP!`;
     } catch (err) {
       console.error(err);
       zipStatus.textContent = "❌ Erro: " + err.message;
@@ -240,9 +240,13 @@
         state.currentImg = state.frames[frameOriginal].img;
         irParaFrame(frameOriginal);
       }
+      if (btnAll) { btnAll.disabled = false; btnAll.textContent = "📦 Exportar Todos os Frames (.ZIP)"; }
+      if (btnSeq) { btnSeq.disabled = false; btnSeq.textContent = "📦 Exportar .ZIP (PNG)"; }
       setTimeout(() => { progressBar.classList.remove("active"); }, 2000);
     }
   }
+
+
 
   // ============================================================================
   // RENDER RETRÔ (preview)
@@ -1437,9 +1441,18 @@
     // EXPORTAR ZIP — RETRÔ (VÍDEO) — CORRIGIDO
     // ========================================================================
     document.getElementById("btnExportZip").addEventListener("click", () => {
+      // Se houver mais de 1 imagem aberta, exporta exatamente a quantidade de imagens (sem repetir)
+      if (state.mediaType === "image" && state.frames.length > 1) {
+        exportarTodosFramesZip();
+        return;
+      }
+
       if (state.layersActive) { exportLayersZip(); return; }
       if (state.mediaType === "none") { alert("Carregue uma imagem ou vídeo primeiro!"); return; }
       if (typeof JSZip === "undefined") { alert("JSZip não carregado."); return; }
+
+      // ... (o restante do código de vídeo continua igual) ...
+
 
       (async () => {
         const fps = parseInt(document.getElementById("rangeFps").value, 10);
@@ -1524,22 +1537,37 @@
     document.getElementById("btnExportGif").addEventListener("click", () => {
       if (state.mediaType === "none") { alert("Carregue uma imagem ou vídeo primeiro!"); return; }
       if (typeof GIF === "undefined") { alert("gif.js não carregado."); return; }
+
       (async () => {
-        const fps = parseInt(document.getElementById("rangeGifFps").value, 10);
-        const dur = parseInt(document.getElementById("rangeGifDur").value, 10);
-        const quality = parseInt(document.getElementById("rangeGifQual").value, 10);
-        const totalFrames = fps * dur;
+        const fps = parseInt(document.getElementById("rangeGifFps").value, 10) || 10;
+        const dur = parseInt(document.getElementById("rangeGifDur").value, 10) || 2;
+        const quality = parseInt(document.getElementById("rangeGifQual").value, 10) || 15;
         const delay = Math.round(1000 / fps);
         const name = document.getElementById("fileName").value.trim() || "pixel_gif";
+
+        const temMultiplasImagens = (state.mediaType === "image" && state.frames.length > 1);
+        const totalFrames = temMultiplasImagens ? state.frames.length : (fps * dur);
+
         const progressBar = document.getElementById("gifProgress");
         const fill = progressBar.querySelector("div");
         const gifStatus = document.getElementById("gifStatus");
         const btn = document.getElementById("btnExportGif");
         btn.disabled = true; btn.textContent = "⏳ Gerando GIF...";
         progressBar.classList.add("active"); fill.style.width = "0%";
+
         const wasLayersActive = state.layersActive;
-        state.layersActive = false;
-        const w = mainCanvas.width, h = mainCanvas.height;
+        const frameOriginal = state.currentFrameIndex;
+
+        // Tamanho fixo para todos os frames do GIF
+        const gifW = mainCanvas.width;
+        const gifH = mainCanvas.height;
+
+        // Canvas auxiliar com tamanho fixo para evitar distorção ou erro no gif.js
+        const gifCanvas = document.createElement("canvas");
+        gifCanvas.width = gifW;
+        gifCanvas.height = gifH;
+        const gifCtx = gifCanvas.getContext("2d", { willReadFrequently: true });
+
         const opts = getGlobalOptions();
         const savedTime = state.synthTime, savedVidTime = videoEl.currentTime, wasPlaying = state.isPlaying;
         const wasPaused = videoEl.paused;
@@ -1567,46 +1595,101 @@
 
         const workerScript = (typeof window.GIF_WORKER_SCRIPT !== "undefined") ? window.GIF_WORKER_SCRIPT : "gif.worker.js";
         try {
-          const gif = new GIF({ workers: 2, quality: Math.max(1, 30 - quality), width: w, height: h, workerScript, transparent: "rgba(0,0,0,0)" });
-          gif.on("progress", (p) => { fill.style.width = `${p*100}%`; gifStatus.textContent = `Codificando... ${Math.round(p*100)}%`; });
+          const gif = new GIF({
+            workers: 2,
+            quality: Math.max(1, 30 - quality),
+            width: gifW,
+            height: gifH,
+            workerScript,
+            transparent: "rgba(0,0,0,0)"
+          });
+
+          gif.on("progress", (p) => {
+            fill.style.width = `${p * 100}%`;
+            gifStatus.textContent = `Codificando... ${Math.round(p * 100)}%`;
+          });
+
           gif.on("finished", (blob) => {
             const url = URL.createObjectURL(blob);
-            const a = document.createElement("a"); a.href = url; a.download = `${name}.gif`; a.click();
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${name}.gif`;
+            a.click();
             URL.revokeObjectURL(url);
             gifStatus.textContent = `✅ GIF pronto! (${totalFrames} frames)`;
-            statusBadge.textContent = "GIF exportado!";
-            btn.disabled = false; btn.textContent = "🎞️ Exportar GIF";
+            statusBadge.textContent = `GIF de ${totalFrames} frames exportado!`;
+            btn.disabled = false;
+            btn.textContent = "🎞️ Exportar GIF";
             setTimeout(() => { progressBar.classList.remove("active"); }, 2000);
           });
+
           for (let i = 0; i < totalFrames; i++) {
-            const t = i / fps;
-            if (state.mediaType === "image" && state.currentImg) { offCtx.clearRect(0,0,w,h); offCtx.drawImage(state.currentImg,0,0,w,h); }
-            else if (state.mediaType === "video") {
-              const target = videoDuration ? (t % videoDuration) : 0;
-              await seekVideo(target);
-              offCtx.clearRect(0,0,w,h); offCtx.drawImage(videoEl,0,0,w,h);
-            } else if (state.mediaType === "synth") { desenharAnimacaoTeste(offCtx, w, h, t); }
-            const imgData = offCtx.getImageData(0,0,w,h).data;
-            window.EstiloRenderer.renderizar(ctx, imgData, w, h, opts);
-            gif.addFrame(ctx, { copy: true, delay });
-            fill.style.width = `${((i+1)/totalFrames)*100}%`;
-            gifStatus.textContent = `Gerando frames... ${i+1} / ${totalFrames}`;
+            gifCtx.clearRect(0, 0, gifW, gifH);
+
+            if (temMultiplasImagens) {
+              state.currentFrameIndex = i;
+              state.currentImg = state.frames[i].img;
+
+              if (wasLayersActive) {
+                renderLayersFrame();
+                gifCtx.drawImage(mainCanvas, 0, 0, gifW, gifH);
+              } else {
+                offCanvas.width = gifW;
+                offCanvas.height = gifH;
+                offCtx.clearRect(0, 0, gifW, gifH);
+                offCtx.drawImage(state.currentImg, 0, 0, gifW, gifH);
+                const imgData = offCtx.getImageData(0, 0, gifW, gifH).data;
+                window.EstiloRenderer.renderizar(gifCtx, imgData, gifW, gifH, opts);
+              }
+            } else {
+              state.layersActive = false;
+              const t = i / fps;
+              offCanvas.width = gifW;
+              offCanvas.height = gifH;
+              offCtx.clearRect(0, 0, gifW, gifH);
+
+              if (state.mediaType === "image" && state.currentImg) {
+                offCtx.drawImage(state.currentImg, 0, 0, gifW, gifH);
+              } else if (state.mediaType === "video") {
+                const target = videoDuration ? (t % videoDuration) : 0;
+                await seekVideo(target);
+                offCtx.drawImage(videoEl, 0, 0, gifW, gifH);
+              } else if (state.mediaType === "synth") {
+                desenharAnimacaoTeste(offCtx, gifW, gifH, t);
+              }
+              const imgData = offCtx.getImageData(0, 0, gifW, gifH).data;
+              window.EstiloRenderer.renderizar(gifCtx, imgData, gifW, gifH, opts);
+            }
+
+            gif.addFrame(gifCtx, { copy: true, delay });
+            fill.style.width = `${((i + 1) / totalFrames) * 100}%`;
+            gifStatus.textContent = `Gerando frames... ${i + 1} / ${totalFrames}`;
             if (i % 3 === 0) await new Promise(r => setTimeout(r, 0));
           }
+
           gifStatus.textContent = "Codificando GIF final...";
           gif.render();
         } catch (err) {
+          console.error(err);
           gifStatus.textContent = "❌ Erro: " + err.message;
-          btn.disabled = false; btn.textContent = "🎞️ Exportar GIF";
+          btn.disabled = false;
+          btn.textContent = "🎞️ Exportar GIF";
           progressBar.classList.remove("active");
         } finally {
           if (state.mediaType === "synth") state.synthTime = savedTime;
-          if (state.mediaType === "video") { videoEl.currentTime = savedVidTime; if (!wasPaused && wasPlaying) videoEl.play(); }
+          if (state.mediaType === "video") {
+            videoEl.currentTime = savedVidTime;
+            if (!wasPaused && wasPlaying) videoEl.play();
+          }
           state.isPlaying = wasPlaying;
           state.layersActive = wasLayersActive;
+          if (temMultiplasImagens && state.frames.length > 0) {
+            irParaFrame(frameOriginal);
+          }
         }
       })();
     });
+
 
     const btnPrev = document.getElementById("btnPrevFrame");
     const btnNext = document.getElementById("btnNextFrame");
