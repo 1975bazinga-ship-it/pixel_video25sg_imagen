@@ -9,7 +9,8 @@
     html, body { height: 100%; overflow: hidden; }
     body { background: #0d0d11; color: #e4e4e7; display: flex; }
 
-    aside { width: 430px; background: #1a1a22; border-right: 1px solid #2e2e3a; padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+    /* --- PAINEL ESQUERDO --- */
+    aside { width: 430px; min-width: 430px; background: #1a1a22; border-right: 1px solid #2e2e3a; padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; z-index: 10; }
     h1 { font-size: 15px; color: #00ffcc; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #2e2e3a; padding-bottom: 8px; }
     section { background: #22222c; padding: 10px; border-radius: 6px; border: 1px solid #2f2f3d; display: flex; flex-direction: column; gap: 8px; }
     h2 { font-size: 12px; color: #a1a1aa; text-transform: uppercase; display: flex; justify-content: space-between; align-items: center; }
@@ -27,12 +28,45 @@
     button.eyedropper-active { background: #ff0066 !important; color: #fff !important; border-color: #ff66a3 !important; animation: pulse 1s infinite; }
     @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
 
-    main { flex: 1; display: flex; flex-direction: column; background: #0d0d11; }
-    header { background: #181820; padding: 10px 16px; border-bottom: 1px solid #2e2e3a; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
-    .canvas-area { flex: 1; overflow: auto; display: flex; align-items: center; justify-content: center; padding: 20px; background-image: linear-gradient(45deg, #16161d 25%, transparent 25%), linear-gradient(-45deg, #16161d 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #16161d 75%), linear-gradient(-45deg, transparent 75%, #16161d 75%); background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0; }
-    canvas { box-shadow: 0 10px 30px rgba(0,0,0,0.7); image-rendering: pixelated; max-width: none; transform-origin: center; }
-    canvas.picking { cursor: crosshair !important; outline: 2px solid #ff0066; }
-    footer { background: #181820; padding: 8px 16px; border-top: 1px solid #2e2e3a; display: flex; align-items: center; gap: 10px; font-size: 12px; }
+    /* --- ÁREA DIREITA --- */
+    main { flex: 1; display: flex; flex-direction: column; background: #0d0d11; min-width: 0; }
+    header { background: #181820; padding: 10px 16px; border-bottom: 1px solid #2e2e3a; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; z-index: 10; }
+    
+    /* O SEGREDO DO ZOOM ESTÁ AQUI */
+    .canvas-area { 
+      flex: 1; 
+      overflow: auto; 
+      position: relative; 
+      background-image: linear-gradient(45deg, #16161d 25%, transparent 25%), linear-gradient(-45deg, #16161d 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #16161d 75%), linear-gradient(-45deg, transparent 75%, #16161d 75%); 
+      background-size: 20px 20px; 
+      background-position: 0 0, 0 10px, 10px -10px, -10px 0; 
+      cursor: grab;
+    }
+    .canvas-area:active { cursor: grabbing; }
+
+    .canvas-wrapper {
+      /* Usa flex para centralizar o canvas quando ele for menor que a tela */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      /* Força o container a ser maior que a tela para gerar barras de rolagem */
+      min-width: 100%;
+      min-height: 100%;
+      width: max-content;
+      height: max-content;
+      padding: 40px;
+    }
+
+    canvas { 
+      box-shadow: 0 10px 30px rgba(0,0,0,0.7); 
+      image-rendering: pixelated; 
+      max-width: none; 
+      transform-origin: center; /* O Zoom cresce a partir do centro */
+      pointer-events: none; /* O clique do mouse passa direto para o wrapper, facilitando o Pan */
+    }
+    canvas.picking { pointer-events: auto; cursor: crosshair !important; outline: 2px solid #ff0066; }
+
+    footer { background: #181820; padding: 8px 16px; border-top: 1px solid #2e2e3a; display: flex; align-items: center; gap: 10px; font-size: 12px; z-index: 10; }
     .palette-preview { display: flex; height: 14px; border-radius: 3px; overflow: hidden; border: 1px solid #3f3f4e; }
     .palette-preview div { flex: 1; }
     .status-badge { font-size: 11px; color: #00ffcc; background: #0f2924; padding: 3px 8px; border-radius: 4px; border: 1px solid #00ffcc44; }
@@ -42,25 +76,16 @@
 
     .layer-card { background: #17171f; border: 1px solid #30303f; border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 7px; transition: border-left-color 0.2s; }
     .layer-header { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 700; color: #f4f4f5; }
-        .swatches-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr); /* 4 colunas */
-  gap: 6px;
-  width: 100%;
-}
-    .swatch-slot { padding: 3px; }
-    .swatch-slot .btn-drop { font-size: 10px; padding: 2px 3px; }
-    .swatch-slot .btn-clear-slot { font-size: 9px; padding: 1px 3px; }
-    .swatch-slot input[type="color"] { width: 22px; height: 20px; }
-    .swatch-slot { background: #22222c; border: 1px solid #383848; border-radius: 4px; padding: 4px; display: flex; flex-direction: column; align-items: center; gap: 4px; transition: transform 0.15s; }
+    .swatches-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; width: 100%; }
+    .swatch-slot { padding: 3px; background: #22222c; border: 1px solid #383848; border-radius: 4px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
     .swatch-slot.disabled-slot { opacity: 0.45; }
     .swatch-top { display: flex; align-items: center; gap: 3px; width: 100%; justify-content: space-between; }
-    .btn-drop { padding: 3px 5px; font-size: 11px; flex: 1; text-align: center; }
-    .btn-clear-slot { padding: 2px 5px; font-size: 10px; background: #2a181e; border-color: #5c2838; color: #fda4af; }
-
+    .swatch-slot .btn-drop { font-size: 10px; padding: 2px 3px; }
+    .swatch-slot .btn-clear-slot { font-size: 9px; padding: 1px 3px; background: #2a181e; border-color: #5c2838; color: #fda4af; }
+    .swatch-slot input[type="color"] { width: 22px; height: 20px; }
+    
     .divider { height: 2px; background: linear-gradient(90deg, transparent, #00ffcc66, transparent); border-radius: 2px; margin: 4px 0; }
     .hint { font-size: 10px; color: #71717a; line-height: 1.4; }
-
     #framesBar button { min-width: 40px; }
   </style>
 </head>
@@ -70,10 +95,8 @@
 
     <section>
       <h2>🎛 Controles Globais</h2>
-
       <label>Tamanho do Bloco: <strong id="lblBloco">2 px</strong></label>
       <input type="range" id="rangeBloco" min="1" max="40" value="2">
-
       <label>Paleta Base (fundo / restante): <span id="paletaCount" style="font-size:10px;color:#71717a;">0</span></label>
       <select id="selectPaleta"></select>
       <div id="palettePreview" class="palette-preview"></div>
@@ -83,24 +106,18 @@
         <button id="btnUseCustom">Usar Custom</button>
         <button id="btnClearCustom">Limpar</button>
       </div>
-
       <label>Estilo Base: <span id="estiloCount" style="font-size:10px;color:#71717a;">0</span></label>
       <select id="selectEstilo"></select>
-
       <div class="row">
         <label><input type="checkbox" id="chkGrade"> Grade</label>
         <label><input type="checkbox" id="chkContorno"> Contorno Preto</label>
       </div>
-
       <label>Força do Contorno: <strong id="lblContornoForca">50</strong></label>
       <input type="range" id="rangeContornoForca" min="0" max="255" value="50">
-
       <label>Brilho: <strong id="lblBrilho">0</strong></label>
       <input type="range" id="rangeBrilho" min="-100" max="100" value="0">
-
       <label>Contraste: <strong id="lblContraste">0</strong></label>
       <input type="range" id="rangeContraste" min="-100" max="100" value="0">
-
       <div class="row">
         <label><input type="checkbox" id="chkChroma"> Chroma</label>
         <input type="color" id="chromaColor" value="#00ff00">
@@ -108,12 +125,8 @@
       </div>
       <label>Tolerância Chroma: <strong id="lblTol">35</strong></label>
       <input type="range" id="rangeTol" min="5" max="150" value="35">
-
       <div class="divider"></div>
-      <p class="hint">
-        Esses controles se aplicam ao <strong>fundo/restante</strong> em qualquer modo.
-        No modo <strong>7 Camadas</strong>, cada camada sobrescreve com sua própria paleta/estilo.
-      </p>
+      <p class="hint">Esses controles se aplicam ao <strong>fundo/restante</strong> em qualquer modo. No modo <strong>20 Camadas</strong>, cada camada sobrescreve com sua própria paleta/estilo.</p>
     </section>
 
     <section>
@@ -138,9 +151,7 @@
       <button class="primary" id="btnExportZip" style="width:100%">📦 Exportar .ZIP (PNG)</button>
       <div class="progress-bar" id="zipProgress"><div></div></div>
       <span id="zipStatus" style="font-size: 11px; color: #a1a1aa;"></span>
-      <p class="hint">
-        Se houver múltiplas imagens carregadas, o botão <strong>Exportar Todos os Frames</strong> na barra de frames gera um ZIP com todas.
-      </p>
+      <p class="hint">Se houver múltiplas imagens carregadas, o botão <strong>Exportar Todos os Frames</strong> na barra de frames gera um ZIP com todas.</p>
     </section>
 
     <section>
@@ -160,10 +171,7 @@
 
     <section>
       <h2>🎨 20 Camadas (8 Conta-Gotas Cada)</h2>
-      <p class="hint">
-        Cada camada tem <strong>4 conta-gotas</strong> e uma <strong>paleta/estilo próprios</strong>.
-        O que não for capturado por nenhuma camada usa os controles globais acima.
-      </p>
+      <p class="hint">Cada camada tem <strong>8 conta-gotas</strong> e uma <strong>paleta/estilo próprios</strong>. O que não for capturado por nenhuma camada usa os controles globais acima.</p>
       <div id="layersContainer" style="display: flex; flex-direction: column; gap: 8px;"></div>
     </section>
 
@@ -173,9 +181,7 @@
         <button id="btnLayersToggleDebug" style="flex:1">Debug Visual</button>
         <button id="btnLayersDemoChar" style="flex:1">Personagem Exemplo</button>
       </div>
-      <p class="hint">
-        <strong>Debug Visual</strong>: desenha bordas coloridas mostrando qual camada capturou cada bloco.
-      </p>
+      <p class="hint"><strong>Debug Visual</strong>: desenha bordas coloridas mostrando qual camada capturou cada bloco.</p>
     </section>
   </aside>
 
@@ -191,28 +197,25 @@
       <div class="row">
         <span id="statusBadge" class="status-badge">Pronto</span>
         <label>Zoom: <strong id="lblZoom">100%</strong></label>
-        <input type="range" id="rangeZoom" min="25" max="300" value="100" style="width:90px">
+        <input type="range" id="rangeZoom" min="10" max="1000" value="100" style="width:120px">
       </div>
     </header>
 
-    <!-- NAVEGAÇÃO ENTRE FRAMES -->
-    <!-- NAVEGAÇÃO ENTRE FRAMES -->
     <div id="framesBar" style="display:none; background:#14141a; padding:8px 16px; border-bottom:1px solid #2e2e3a; align-items:center; gap:10px;">
       <button id="btnPrevFrame" title="Frame anterior (←)">◀</button>
       <span style="font-size:12px; color:#a1a1aa;">Frame</span>
       <strong id="lblFrameAtual" style="color:#00ffcc;">1 / 1</strong>
       <button id="btnNextFrame" title="Próximo frame (→)">▶</button>
-      
-      <!-- NOVO BOTÃO PLAY/PAUSE -->
       <button id="btnPlayFrames" class="primary" style="margin-left: 10px;">▶ Play</button>
-
       <span style="flex:1"></span>
-	        <h2>( qo_oj )</h2>
       <button class="primary" id="btnExportAllFrames">📦 Exportar Todos os Frames (.ZIP)</button>
     </div>
 
-    <div class="canvas-area">
-      <canvas id="mainCanvas" width="480" height="320"></canvas>
+    <!-- ÁREA DO CANVAS CORRIGIDA -->
+    <div class="canvas-area" id="canvasArea">
+      <div class="canvas-wrapper" id="canvasWrapper">
+        <canvas id="mainCanvas" width="480" height="320"></canvas>
+      </div>
     </div>
 
     <footer>
@@ -235,6 +238,5 @@
   <script>
     window.GIF_WORKER_SCRIPT = "gif.worker.js";
   </script>
-  <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "f7a7ba5e2c5a4ea19fe250df5ccd1d85"}'></script><!-- End Cloudflare Web Analytics -->
 </body>
 </html>
