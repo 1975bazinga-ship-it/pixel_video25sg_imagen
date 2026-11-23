@@ -98,7 +98,7 @@
     hex.forEach(c => { const d = document.createElement("div"); d.style.background = c; palettePreview.appendChild(d); });
   }
 
-  // CORREÇÃO DO CANVAS SEM QUEBRAR O LAYOUT
+  // FUNÇÃO QUE ATUALIZA O TAMANHO DO CANVAS
   function setCanvasSize(w, h) {
     const maxDim = 960;
     let nw = w || 480, nh = h || 320;
@@ -113,28 +113,30 @@
     aplicarZoom(rangeZoom.value);
   }
 
-  // LÓGICA DO ZOOM CENTRALIZADO
+  // LÓGICA DO ZOOM CENTRALIZADO E SEGURO (Não trava o vídeo)
   let currentZoomLevel = 1;
   function aplicarZoom(zoomVal) {
     currentZoomLevel = zoomVal / 100;
     document.getElementById("lblZoom").textContent = `${zoomVal}%`;
     rangeZoom.value = zoomVal;
     
-    // O transform: scale cresce a imagem a partir do centro sem afetar o layout do menu
     mainCanvas.style.transform = `scale(${currentZoomLevel})`;
     
-    // Truque: Ajustar o tamanho do wrapper para que as barras de rolagem saibam o tamanho real da imagem escalada
     const rect = mainCanvas.getBoundingClientRect();
     canvasWrapper.style.width = Math.max(canvasArea.clientWidth, rect.width + 80) + "px";
     canvasWrapper.style.height = Math.max(canvasArea.clientHeight, rect.height + 80) + "px";
+    
+    // Se o vídeo estiver pausado e a imagem for atualizada, desenha um frame para não ficar em branco
+    if (state.mediaType === "video" && videoEl.paused) {
+      if (state.layersActive) renderLayersFrame();
+      else renderRetroFrame();
+    }
   }
 
-  // CONTROLE DO ZOOM PELO SLIDER
   rangeZoom.addEventListener("input", (e) => {
     aplicarZoom(parseInt(e.target.value, 10));
   });
 
-  // ZOOM COM A RODINHA DO MOUSE
   canvasArea.addEventListener("wheel", (e) => {
     e.preventDefault();
     let step = Math.max(5, currentZoomLevel * 100 * 0.1);
@@ -149,7 +151,6 @@
     aplicarZoom(newZoom);
   }, { passive: false });
 
-  // ARRASTAR IMAGEM (PAN)
   let isDragging = false;
   let startX, startY, scrollLeft, scrollTop;
 
@@ -196,9 +197,6 @@
     };
   }
 
-  // ============================================================================
-  // MÚLTIPLAS IMAGENS E SEQUÊNCIA
-  // ============================================================================
   function atualizarBarraFrames() {
     const bar = document.getElementById("framesBar");
     if (!bar) return;
@@ -294,9 +292,7 @@
   }
 
 
-  // ============================================================================
-  // RENDERIZAÇÃO
-  // ============================================================================
+  // RENDERIZAÇÃO RETRÔ
   function renderRetroFrame() {
     if (state.layersActive) return;
     const w = mainCanvas.width, h = mainCanvas.height;
@@ -373,9 +369,7 @@
     videoEl.pause(); videoEl.removeAttribute("src"); videoEl.load();
   }
 
-  // ============================================================================
-  // 20 CAMADAS
-  // ============================================================================
+  // CAMADAS
   const LAYER_DEFINITIONS = [
     { id: "hair", name: "1. Cabelo", defaultColor: "#3b2314", defaultPalette: "hair_anime", defaultStyle: "bayer4" },
     { id: "hair2", name: "2. Cabelo Secundário", defaultColor: "#9a3412", defaultPalette: "hair_anime", defaultStyle: "bayer2" },
@@ -468,10 +462,32 @@
       populatePaletaSelect(document.getElementById(`layer_pal_${layerIdx}`), layer.palette);
       populateEstiloSelect(document.getElementById(`layer_sty_${layerIdx}`), layer.style);
 
-      document.getElementById(`layer_en_${layerIdx}`).addEventListener("change", (e) => { layer.enabled = e.target.checked; state.layersActive = true; renderLayersFrame(); });
-      document.getElementById(`layer_tol_${layerIdx}`).addEventListener("input", (e) => { layer.tolerance = parseInt(e.target.value, 10); document.getElementById(`lbl_tol_${layerIdx}`).textContent = layer.tolerance; state.layersActive = true; renderLayersFrame(); });
-      document.getElementById(`layer_pal_${layerIdx}`).addEventListener("change", (e) => { layer.palette = e.target.value; state.layersActive = true; renderLayersFrame(); });
-      document.getElementById(`layer_sty_${layerIdx}`).addEventListener("change", (e) => { layer.style = e.target.value; state.layersActive = true; renderLayersFrame(); });
+      // CORREÇÃO CRÍTICA: Se o vídeo estiver rodando, ele renderiza no próximo frame sem pausar
+      document.getElementById(`layer_en_${layerIdx}`).addEventListener("change", (e) => { 
+        layer.enabled = e.target.checked; 
+        state.layersActive = true; 
+        if (!videoEl.paused) return; // Se o vídeo já está rodando, a loop do vídeo atualiza sozinha
+        renderLayersFrame(); 
+      });
+      document.getElementById(`layer_tol_${layerIdx}`).addEventListener("input", (e) => { 
+        layer.tolerance = parseInt(e.target.value, 10); 
+        document.getElementById(`lbl_tol_${layerIdx}`).textContent = layer.tolerance; 
+        state.layersActive = true; 
+        if (!videoEl.paused) return;
+        renderLayersFrame(); 
+      });
+      document.getElementById(`layer_pal_${layerIdx}`).addEventListener("change", (e) => { 
+        layer.palette = e.target.value; 
+        state.layersActive = true; 
+        if (!videoEl.paused) return;
+        renderLayersFrame(); 
+      });
+      document.getElementById(`layer_sty_${layerIdx}`).addEventListener("change", (e) => { 
+        layer.style = e.target.value; 
+        state.layersActive = true; 
+        if (!videoEl.paused) return;
+        renderLayersFrame(); 
+      });
 
       layer.colors.forEach((slot, slotIdx) => {
         const chkEl = document.getElementById(`slot_chk_${layerIdx}_${slotIdx}`);
@@ -484,7 +500,9 @@
           slot.active = e.target.checked;
           boxEl.classList.toggle("disabled-slot", !slot.active);
           if (slot.active) { layer.enabled = true; document.getElementById(`layer_en_${layerIdx}`).checked = true; }
-          state.layersActive = true; renderLayersFrame();
+          state.layersActive = true; 
+          if (!videoEl.paused) return;
+          renderLayersFrame();
         });
         colEl.addEventListener("input", (e) => {
           slot.hex = e.target.value; slot.active = true; chkEl.checked = true;
@@ -493,9 +511,16 @@
           if (slotIdx === 0) card.style.borderLeftColor = slot.hex;
           const prev = document.getElementById(`layer_prev_${layerIdx}`);
           if (prev) prev.style.background = slot.hex;
-          state.layersActive = true; renderLayersFrame();
+          state.layersActive = true;
+          if (!videoEl.paused) return;
+          renderLayersFrame();
         });
-        clrEl.addEventListener("click", () => { slot.active = false; chkEl.checked = false; boxEl.classList.add("disabled-slot"); state.layersActive = true; renderLayersFrame(); });
+        clrEl.addEventListener("click", () => { 
+          slot.active = false; chkEl.checked = false; boxEl.classList.add("disabled-slot"); 
+          state.layersActive = true; 
+          if (!videoEl.paused) return;
+          renderLayersFrame(); 
+        });
         dropEl.addEventListener("click", () => {
           const isSame = state.activeEyedropper && state.activeEyedropper.layerIndex === layerIdx && state.activeEyedropper.slotIndex === slotIdx;
           clearEyedropperState();
@@ -505,7 +530,7 @@
             mainCanvas.classList.add("picking");
             statusBadge.textContent = `💧 Clique no personagem: ${layer.name} (#${slotIdx + 1})`;
             state.layersActive = true;
-            renderLayersFrame();
+            renderLayersFrame(); // Força um frame estático só pra garantir
           }
         });
       });
@@ -578,8 +603,7 @@
         for (let y = startY; y < startY + bh; y++) {
           for (let x = startX; x < startX + bw; x++) {
             const i = (y * srcW + x) * 4;
-            r += data[i]; g += data[i+1]; b += data[i+2];
-            count++;
+            r += data[i]; g += data[i+1]; b += data[i+2]; count++;
           }
         }
         r /= count; g /= count; b /= count;
@@ -604,14 +628,11 @@
         let finalRgb = [r, g, b];
         if (targetPalette && targetPalette.length > 0) finalRgb = window.PaletaHelper.corMaisProxima(r, g, b, targetPalette);
 
-        // Aplica contorno básico
         if (state.contorno && bx > 0 && by > 0) {
           const leftIdx = (sampleY * srcW + Math.max(0, sampleX - px)) * 4;
           const diff = Math.abs(r - data[leftIdx]) + Math.abs(g - data[leftIdx+1]) + Math.abs(b - data[leftIdx+2]);
           if (diff > (255 - state.contornoForca)) {
-            ctx.fillStyle = "#08080a";
-            ctx.fillRect(startX, startY, bw, bh);
-            continue;
+            ctx.fillStyle = "#08080a"; ctx.fillRect(startX, startY, bw, bh); continue;
           }
         }
 
@@ -629,8 +650,6 @@
       const el = document.getElementById(`layer_count_${i}`);
       if (el) el.textContent = layerCounts[i];
     });
-    
-    aplicarZoom(rangeZoom.value);
   }
 
   function renderLayersFrameFullRes() {
@@ -716,8 +735,16 @@
     return fullCanvas;
   }
 
+  function startLayersVideoLoop() {
+    function loop() {
+      if (state.layersActive && state.mediaType === "video" && !videoEl.paused && !videoEl.ended) {
+        renderLayersFrame();
+      }
+      if (state.layersActive) requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+  }
 
-  // CLIQUE DO CONTA-GOTAS NO CANVAS
   mainCanvas.addEventListener("click", (e) => {
     if (!state.activeEyedropper) return;
     const rect = mainCanvas.getBoundingClientRect();
@@ -798,7 +825,6 @@
     }
   }
 
-
   function init() {
     populatePaletaSelect(selectPaleta, "original");
     populateEstiloSelect(selectEstilo, "quadrado_media");
@@ -807,8 +833,10 @@
     atualizarPreviewPaleta();
     initLayers();
 
+    // CORREÇÃO CRÍTICA AQUI: Se o vídeo estiver tocando, só atualiza os estados, deixa o loop cuidar de desenhar
     document.getElementById("rangeBloco").addEventListener("input", (e) => {
       state.bloco = parseInt(e.target.value, 10); document.getElementById("lblBloco").textContent = `${state.bloco} px`;
+      if (!videoEl.paused) return; // Se o vídeo tá tocando, ele vai atualizar no próximo frame sozinho
       if (state.layersActive) renderLayersFrame(); else renderRetroFrame();
     });
     
@@ -820,18 +848,37 @@
         if (el === document.getElementById("chkContorno")) state.contorno = el.checked;
         if (el === document.getElementById("chkChroma")) state.chromaAtivo = el.checked;
         if (el === document.getElementById("chromaColor")) state.chromaHex = el.value;
+        
+        if (!videoEl.paused) return;
         if (state.layersActive) renderLayersFrame(); else renderRetroFrame();
       });
     });
     
-    document.getElementById("rangeContornoForca").addEventListener("input", (e) => { state.contornoForca = parseInt(e.target.value, 10); document.getElementById("lblContornoForca").textContent = state.contornoForca; if (state.layersActive) renderLayersFrame(); else renderRetroFrame(); });
-    document.getElementById("rangeBrilho").addEventListener("input", (e) => { state.brilho = parseInt(e.target.value, 10); document.getElementById("lblBrilho").textContent = state.brilho; if (state.layersActive) renderLayersFrame(); else renderRetroFrame(); });
-    document.getElementById("rangeContraste").addEventListener("input", (e) => { state.contraste = parseInt(e.target.value, 10); document.getElementById("lblContraste").textContent = state.contraste; if (state.layersActive) renderLayersFrame(); else renderRetroFrame(); });
-    document.getElementById("rangeTol").addEventListener("input", (e) => { state.chromaTol = parseInt(e.target.value, 10); document.getElementById("lblTol").textContent = state.chromaTol; if (state.layersActive) renderLayersFrame(); else renderRetroFrame(); });
+    document.getElementById("rangeContornoForca").addEventListener("input", (e) => { 
+      state.contornoForca = parseInt(e.target.value, 10); document.getElementById("lblContornoForca").textContent = state.contornoForca; 
+      if (!videoEl.paused) return;
+      if (state.layersActive) renderLayersFrame(); else renderRetroFrame(); 
+    });
+    document.getElementById("rangeBrilho").addEventListener("input", (e) => { 
+      state.brilho = parseInt(e.target.value, 10); document.getElementById("lblBrilho").textContent = state.brilho; 
+      if (!videoEl.paused) return;
+      if (state.layersActive) renderLayersFrame(); else renderRetroFrame(); 
+    });
+    document.getElementById("rangeContraste").addEventListener("input", (e) => { 
+      state.contraste = parseInt(e.target.value, 10); document.getElementById("lblContraste").textContent = state.contraste; 
+      if (!videoEl.paused) return;
+      if (state.layersActive) renderLayersFrame(); else renderRetroFrame(); 
+    });
+    document.getElementById("rangeTol").addEventListener("input", (e) => { 
+      state.chromaTol = parseInt(e.target.value, 10); document.getElementById("lblTol").textContent = state.chromaTol; 
+      if (!videoEl.paused) return;
+      if (state.layersActive) renderLayersFrame(); else renderRetroFrame(); 
+    });
 
     document.getElementById("btnAddCustom").addEventListener("click", () => { state.customPalette.push(document.getElementById("customColor").value); state.useCustomPalette = true; atualizarPreviewPaleta(); if (state.layersActive) renderLayersFrame(); else renderRetroFrame(); });
     document.getElementById("btnUseCustom").addEventListener("click", () => { state.useCustomPalette = true; atualizarPreviewPaleta(); if (state.layersActive) renderLayersFrame(); else renderRetroFrame(); });
     document.getElementById("btnClearCustom").addEventListener("click", () => { state.customPalette = []; state.useCustomPalette = false; atualizarPreviewPaleta(); if (state.layersActive) renderLayersFrame(); else renderRetroFrame(); });
+    
     document.getElementById("btnCornerColor").addEventListener("click", () => {
       const p = offCtx.getImageData(0,0,1,1).data;
       state.chromaHex = "#" + [p[0],p[1],p[2]].map(v => v.toString(16).padStart(2,"0")).join("");
@@ -848,10 +895,15 @@
         pararVideoAnterior(); state.frames = []; state.currentFrameIndex = 0; atualizarBarraFrames(); state.layersActive = false;
         const url = URL.createObjectURL(videoFile); state.mediaType = "video";
         videoEl.src = url; videoEl.muted = document.getElementById("chkMute").checked; videoEl.loop = document.getElementById("chkLoop").checked;
+        
         videoEl.onloadeddata = () => {
           setCanvasSize(videoEl.videoWidth, videoEl.videoHeight); videoEl.currentTime = 0;
-          videoEl.play().then(() => { state.isPlaying = true; document.getElementById("btnPlayPause").textContent = "⏸ Pausar"; statusBadge.textContent = `Vídeo (${videoEl.videoWidth}x${videoEl.videoHeight})`; renderRetroFrame(); startRetroLoop(); })
-          .catch(() => { statusBadge.textContent = "Clique em Play"; renderRetroFrame(); });
+          videoEl.play().then(() => { 
+            state.isPlaying = true; 
+            document.getElementById("btnPlayPause").textContent = "⏸ Pausar"; 
+            statusBadge.textContent = `Vídeo (${videoEl.videoWidth}x${videoEl.videoHeight})`; 
+            if (state.layersActive) startLayersVideoLoop(); else startRetroLoop(); 
+          }).catch(() => { statusBadge.textContent = "Clique em Play"; renderRetroFrame(); });
         };
         fileInput.value = ""; return;
       }
@@ -906,7 +958,10 @@
 
     document.getElementById("btnPlayPause").addEventListener("click", () => {
       if (state.mediaType === "video") {
-        if (videoEl.paused) { videoEl.play(); state.isPlaying = true; document.getElementById("btnPlayPause").textContent = "⏸ Pausar"; if (state.layersActive) startLayersVideoLoop(); else startRetroLoop(); }
+        if (videoEl.paused) { 
+          videoEl.play(); state.isPlaying = true; document.getElementById("btnPlayPause").textContent = "⏸ Pausar"; 
+          if (state.layersActive) startLayersVideoLoop(); else startRetroLoop(); 
+        }
         else { videoEl.pause(); state.isPlaying = false; document.getElementById("btnPlayPause").textContent = "▶ Continuar"; }
       } else if (state.mediaType === "synth") { state.isPlaying = !state.isPlaying; document.getElementById("btnPlayPause").textContent = state.isPlaying ? "⏸ Pausar" : "▶ Continuar"; }
     });
@@ -1036,7 +1091,6 @@
       }
     });
 
-    // LISTENERS DA BARRA DE FRAMES E TECLADO
     if (document.getElementById("btnPrevFrame")) document.getElementById("btnPrevFrame").addEventListener("click", () => irParaFrame(state.currentFrameIndex - 1));
     if (document.getElementById("btnNextFrame")) document.getElementById("btnNextFrame").addEventListener("click", () => irParaFrame(state.currentFrameIndex + 1));
     if (document.getElementById("btnExportAllFrames")) document.getElementById("btnExportAllFrames").addEventListener("click", exportarTodosFramesZip);
