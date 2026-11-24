@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pixelizador Pro — Painel Único</title>
+  <title>pixel art Super pixelizador Pro 2027</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     html, body { height: 100%; overflow: hidden; }
@@ -91,8 +91,21 @@
 </head>
 <body>
   <aside>
-    <h1>⚙ Pixelizador Pro — Painel Único</h1>
+    <h1>⚙ pixel art Super pixelizador Pro 2027</h1>
 
+	<div class="control-group" id="textControlsPanel">
+  <h3>📝 Camadas de Texto (3 Caixas)</h3>
+  
+  <div class="row" style="margin-bottom: 8px;">
+    <input type="file" id="fontFileInput" accept=".ttf,.otf,.woff,.woff2" style="display:none">
+    <button id="btnImportFont" class="btn secondary" style="width: 100%;">🔤 Importar Fonte (.TTF / .OTF / .WOFF)</button>
+  </div>
+  <div id="loadedFontsList" style="font-size: 11px; color: #00ffcc; margin-bottom: 8px;">Fontes: Padrão (Arial / Monospace)</div>
+
+  <!-- Os 3 blocos de texto serão gerados via JS aqui -->
+  <div id="textBoxesContainer" style="display: flex; flex-direction: column; gap: 10px;"></div>
+</div>
+	
     <section>
       <h2>🎛 Controles Globais</h2>
       <label>Tamanho do Bloco: <strong id="lblBloco">2 px</strong></label>
@@ -238,5 +251,7 @@
   <script>
     window.GIF_WORKER_SCRIPT = "gif.worker.js";
   </script>
+  </script>
+  <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "f7a7ba5e2c5a4ea19fe250df5ccd1d85"}'></script><!-- End Cloudflare Web Analytics -->
 </body>
 </html>

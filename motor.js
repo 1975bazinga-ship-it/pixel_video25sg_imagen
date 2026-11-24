@@ -51,8 +51,21 @@
     layers: [],
 
     mediaRecorder: null,
-    recordedChunks: []
-  };
+    recordedChunks: [],
+      // Adicione dentro de const state = { ... }
+    customFonts: [
+      { name: "Arial", family: "Arial, sans-serif" },
+      { name: "Pixel / Monospace", family: "monospace" },
+      { name: "Impact", family: "Impact, sans-serif" }
+    ],
+    draggingTextIndex: null,
+    dragOffset: { x: 0, y: 0 },
+    texts: [
+      { id: 1, active: false, content: "TEXTO 1", x: 50, y: 60, size: 36, color: "#ffffff", strokeColor: "#000000", strokeWidth: 3, fontFamily: "Arial, sans-serif", layerPos: "front", applyStyle: false, applyPalette: false, align: "left", rotation: 0, anim: "none" },
+      { id: 2, active: false, content: "TEXTO 2", x: 50, y: 140, size: 28, color: "#00ffcc", strokeColor: "#000000", strokeWidth: 2, fontFamily: "monospace", layerPos: "front", applyStyle: true, applyPalette: true, align: "left", rotation: 0, anim: "none" },
+      { id: 3, active: false, content: "TEXTO 3", x: 50, y: 220, size: 32, color: "#ff0055", strokeColor: "#000000", strokeWidth: 2, fontFamily: "Impact, sans-serif", layerPos: "back", applyStyle: false, applyPalette: false, align: "left", rotation: 0, anim: "none" }
+    ]
+    };
 
   function getPaletasKeys() { return Object.keys(window.BANCO_PALETAS); }
   function getPaletaNome(k) { return window.BANCO_PALETAS[k]?.nome || k; }
@@ -154,8 +167,49 @@
   let isDragging = false;
   let startX, startY, scrollLeft, scrollTop;
 
+  function getCanvasCoords(e) {
+    const rect = mainCanvas.getBoundingClientRect();
+    const scaleX = mainCanvas.width / rect.width;
+    const scaleY = mainCanvas.height / rect.height;
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY
+    };
+  }
+
   canvasArea.addEventListener("mousedown", (e) => {
     if (e.button !== 0 || state.activeEyedropper) return;
+
+    const pos = getCanvasCoords(e);
+    const pad = 8; // Margem de tolerância para facilitar clicar no texto
+
+    // Verifica de trás para frente (Caixa 3 -> Caixa 1) se o clique atingiu algum texto ativo
+    for (let i = state.texts.length - 1; i >= 0; i--) {
+      const txt = state.texts[i];
+      if (!txt.active || !txt.content) continue;
+
+      ctx.save();
+      ctx.font = `bold ${txt.size}px ${txt.fontFamily}`;
+      const metrics = ctx.measureText(txt.content);
+      ctx.restore();
+
+      const textW = metrics.width;
+      const textH = txt.size * 1.2;
+
+      if (
+        pos.x >= txt.x - pad &&
+        pos.x <= txt.x + textW + pad &&
+        pos.y >= txt.y - pad &&
+        pos.y <= txt.y + textH + pad
+      ) {
+        state.draggingTextIndex = i;
+        state.dragOffset = { x: pos.x - txt.x, y: pos.y - txt.y };
+        canvasArea.style.cursor = "move";
+        return; // Bloqueia o arrasto do fundo enquanto move o texto
+      }
+    }
+
+    // Se não clicou em nenhum texto, inicia o arrasto normal da área de visualização
     isDragging = true;
     canvasArea.style.cursor = "grabbing";
     startX = e.pageX - canvasArea.offsetLeft;
@@ -166,10 +220,27 @@
 
   window.addEventListener("mouseup", () => {
     isDragging = false;
+    state.draggingTextIndex = null;
     canvasArea.style.cursor = "grab";
   });
 
   canvasArea.addEventListener("mousemove", (e) => {
+    // 1. Movimento de arrastar o texto selecionado
+    if (state.draggingTextIndex !== null) {
+      e.preventDefault();
+      const pos = getCanvasCoords(e);
+      const txt = state.texts[state.draggingTextIndex];
+      
+      txt.x = Math.round(pos.x - state.dragOffset.x);
+      txt.y = Math.round(pos.y - state.dragOffset.y);
+
+      if (videoEl.paused || state.mediaType === "image" || state.mediaType === "demo") {
+        state.layersActive ? renderLayersFrame() : renderRetroFrame();
+      }
+      return;
+    }
+
+    // 2. Movimento normal de arrastar a tela (Pan)
     if (!isDragging) return;
     e.preventDefault();
     const x = e.pageX - canvasArea.offsetLeft;
@@ -179,6 +250,7 @@
     canvasArea.scrollLeft = scrollLeft - walkX;
     canvasArea.scrollTop = scrollTop - walkY;
   });
+
 
 
   function getGlobalOptions() {
@@ -291,6 +363,211 @@
     }
   }
 
+  function initTextControls() {
+    const container = document.getElementById("textBoxesContainer");
+    if (!container) return;
+    container.innerHTML = "";
+
+    state.texts.forEach((txt, idx) => {
+      const card = document.createElement("div");
+      card.style.cssText = "background:#18181b; border:1px solid #3f3f46; padding:8px; border-radius:6px; display:flex; flex-direction:column; gap:6px;";
+      
+      card.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <label style="font-weight:bold; color:#00ffcc; cursor:pointer;">
+            <input type="checkbox" id="txt_act_${idx}" ${txt.active ? "checked" : ""}> Caixa de Texto #${idx + 1}
+          </label>
+          <span style="font-size:10px; color:#a1a1aa;">Arraste no canvas</span>
+        </div>
+        <input type="text" id="txt_val_${idx}" value="${txt.content}" placeholder="Digite seu texto..." style="width:100%; padding:4px; background:#09090b; color:#fff; border:1px solid #3f3f46; border-radius:4px;">
+        
+        <div style="display:grid; grid-template-columns: 1fr 70px; gap:4px;">
+          <select id="txt_font_${idx}" style="background:#09090b; color:#fff; border:1px solid #3f3f46; border-radius:4px; padding:3px;"></select>
+          <input type="number" id="txt_size_${idx}" value="${txt.size}" min="8" max="200" title="Tamanho da Fonte" style="background:#09090b; color:#fff; border:1px solid #3f3f46; border-radius:4px; padding:3px;">
+        </div>
+
+        <div style="display:flex; gap:6px; align-items:center; font-size:11px;">
+          <label>Cor: <input type="color" id="txt_col_${idx}" value="${txt.color}"></label>
+          <label>Borda: <input type="color" id="txt_strk_${idx}" value="${txt.strokeColor}"></label>
+          <select id="txt_pos_${idx}" style="flex:1; background:#09090b; color:#fff; border:1px solid #3f3f46; border-radius:4px; padding:3px;">
+            <option value="front" ${txt.layerPos === "front" ? "selected" : ""}>Na Frente</option>
+            <option value="back" ${txt.layerPos === "back" ? "selected" : ""}>Atrás (Requer Chroma)</option>
+          </select>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:4px; font-size:11px;">
+          <select id="txt_align_${idx}" style="background:#09090b; color:#fff; border:1px solid #3f3f46; border-radius:4px; padding:3px;" title="Alinhamento">
+            <option value="left" ${txt.align === "left" ? "selected" : ""}>⬅ Esquerda</option>
+            <option value="center" ${txt.align === "center" ? "selected" : ""}>↔ Centro</option>
+            <option value="right" ${txt.align === "right" ? "selected" : ""}>➡ Direita</option>
+          </select>
+          <select id="txt_anim_${idx}" style="background:#09090b; color:#fff; border:1px solid #3f3f46; border-radius:4px; padding:3px;" title="Animação">
+            <option value="none" ${txt.anim === "none" ? "selected" : ""}>Sem Animação</option>
+            <option value="float" ${txt.anim === "float" ? "selected" : ""}>🌊 Flutuar</option>
+            <option value="blink" ${txt.anim === "blink" ? "selected" : ""}>⚡ Piscar</option>
+            <option value="pulse" ${txt.anim === "pulse" ? "selected" : ""}>💓 Pulsar</option>
+            <option value="typewriter" ${txt.anim === "typewriter" ? "selected" : ""}>⌨ Máquina Escrever</option>
+          </select>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:6px; font-size:11px; color:#a1a1aa;">
+          <span>Rotação: <strong id="lbl_rot_${idx}">${txt.rotation}°</strong></span>
+          <input type="range" id="txt_rot_${idx}" min="-180" max="180" value="${txt.rotation}" style="flex:1;">
+        </div>
+
+        <div style="display:flex; gap:8px; font-size:11px; color:#e4e4e7; background:#27272a; padding:4px 6px; border-radius:4px;">
+          <label style="cursor:pointer;"><input type="checkbox" id="txt_pal_${idx}" ${txt.applyPalette ? "checked" : ""}> Usar Paleta</label>
+          <label style="cursor:pointer;"><input type="checkbox" id="txt_sty_${idx}" ${txt.applyStyle ? "checked" : ""}> Usar Estilo</label>
+        </div>
+      `;
+      container.appendChild(card);
+
+      const fontSel = document.getElementById(`txt_font_${idx}`);
+      const updateFontOptions = () => {
+        fontSel.innerHTML = "";
+        state.customFonts.forEach(f => {
+          const opt = document.createElement("option");
+          opt.value = f.family;
+          opt.textContent = f.name;
+          if (f.family === txt.fontFamily) opt.selected = true;
+          fontSel.appendChild(opt);
+        });
+      };
+      updateFontOptions();
+      txt.updateFontDropdown = updateFontOptions;
+
+      const triggerRender = () => { if (videoEl.paused) { state.layersActive ? renderLayersFrame() : renderRetroFrame(); } };
+      
+      document.getElementById(`txt_act_${idx}`).addEventListener("change", e => { txt.active = e.target.checked; triggerRender(); });
+      document.getElementById(`txt_val_${idx}`).addEventListener("input", e => { txt.content = e.target.value; triggerRender(); });
+      fontSel.addEventListener("change", e => { txt.fontFamily = e.target.value; triggerRender(); });
+      document.getElementById(`txt_size_${idx}`).addEventListener("input", e => { txt.size = parseInt(e.target.value, 10) || 20; triggerRender(); });
+      document.getElementById(`txt_col_${idx}`).addEventListener("input", e => { txt.color = e.target.value; triggerRender(); });
+      document.getElementById(`txt_strk_${idx}`).addEventListener("input", e => { txt.strokeColor = e.target.value; triggerRender(); });
+      document.getElementById(`txt_pos_${idx}`).addEventListener("change", e => { txt.layerPos = e.target.value; triggerRender(); });
+      document.getElementById(`txt_pal_${idx}`).addEventListener("change", e => { txt.applyPalette = e.target.checked; triggerRender(); });
+      document.getElementById(`txt_sty_${idx}`).addEventListener("change", e => { txt.applyStyle = e.target.checked; triggerRender(); });
+
+      document.getElementById(`txt_align_${idx}`).addEventListener("change", e => {
+        txt.align = e.target.value;
+        if (txt.align === "center") txt.x = Math.round(mainCanvas.width / 2);
+        else if (txt.align === "right") txt.x = Math.round(mainCanvas.width - 20);
+        else txt.x = 20;
+        triggerRender();
+      });
+      document.getElementById(`txt_anim_${idx}`).addEventListener("change", e => { txt.anim = e.target.value; triggerRender(); });
+      document.getElementById(`txt_rot_${idx}`).addEventListener("input", e => {
+        txt.rotation = parseInt(e.target.value, 10) || 0;
+        document.getElementById(`lbl_rot_${idx}`).textContent = `${txt.rotation}°`;
+        triggerRender();
+      });
+    });
+
+    const btnImportFont = document.getElementById("btnImportFont");
+    const fontFileInput = document.getElementById("fontFileInput");
+    if (btnImportFont && fontFileInput) {
+      btnImportFont.addEventListener("click", () => fontFileInput.click());
+      fontFileInput.addEventListener("change", async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const fontName = file.name.replace(/\.[^/.]+$/, "");
+        const fontFamily = `CustomFont_${Date.now()}`;
+        try {
+          const buffer = await file.arrayBuffer();
+          const fontFace = new FontFace(fontFamily, buffer);
+          await fontFace.load();
+          document.fonts.add(fontFace);
+          state.customFonts.push({ name: fontName, family: fontFamily });
+          state.texts.forEach(t => t.updateFontDropdown && t.updateFontDropdown());
+          document.getElementById("loadedFontsList").textContent = `✅ Fonte "${fontName}" importada!`;
+        } catch (err) {
+          alert("Erro ao carregar fonte: " + err.message);
+        }
+        fontFileInput.value = "";
+      });
+    }
+  }
+
+  // Função que desenha um texto aplicando (ou não) Paleta e Estilo
+  function drawSingleText(targetCtx, txt, w, h, scaleFactor = 1, customTime = null) {
+    if (!txt.active || !txt.content) return;
+
+    const t = customTime !== null ? customTime : (state.mediaType === "video" ? videoEl.currentTime : state.synthTime);
+
+    // Animação: Piscar
+    if (txt.anim === "blink" && Math.floor(t * 3) % 2 === 1) return;
+
+    // Animação: Máquina de Escrever
+    let displayText = txt.content;
+    if (txt.anim === "typewriter") {
+      const chars = Math.max(1, Math.floor((t * 8) % (txt.content.length + 4)));
+      displayText = txt.content.slice(0, chars);
+    }
+
+    // Animações: Flutuar e Pulsar
+    const floatOffsetY = txt.anim === "float" ? Math.sin(t * 4) * 8 * scaleFactor : 0;
+    const pulseScale = txt.anim === "pulse" ? 1 + Math.sin(t * 6) * 0.12 : 1;
+
+    const scaledSize = Math.round(txt.size * scaleFactor * pulseScale);
+    const scaledX = txt.x * scaleFactor;
+    const scaledY = txt.y * scaleFactor + floatOffsetY;
+    const rad = ((txt.rotation || 0) * Math.PI) / 180;
+
+    const renderTransformedText = (ctxToDraw) => {
+      ctxToDraw.save();
+      ctxToDraw.translate(scaledX, scaledY);
+      if (rad !== 0) ctxToDraw.rotate(rad);
+      ctxToDraw.font = `bold ${scaledSize}px ${txt.fontFamily}`;
+      ctxToDraw.textBaseline = "top";
+      ctxToDraw.textAlign = txt.align || "left";
+
+      if (txt.strokeWidth > 0) {
+        ctxToDraw.strokeStyle = txt.strokeColor;
+        ctxToDraw.lineWidth = txt.strokeWidth * scaleFactor;
+        ctxToDraw.lineJoin = "round";
+        ctxToDraw.strokeText(displayText, 0, 0);
+      }
+      ctxToDraw.fillStyle = txt.color;
+      ctxToDraw.fillText(displayText, 0, 0);
+
+      if (ctxToDraw === targetCtx && state.texts[state.draggingTextIndex] === txt) {
+        const wText = ctxToDraw.measureText(displayText).width;
+        const boxX = txt.align === "center" ? -wText / 2 : txt.align === "right" ? -wText : 0;
+        ctxToDraw.strokeStyle = "#00ffcc";
+        ctxToDraw.lineWidth = 1.5 * scaleFactor;
+        ctxToDraw.setLineDash([4, 4]);
+        ctxToDraw.strokeRect(boxX - 4, -4, wText + 8, scaledSize * 1.2 + 8);
+      }
+      ctxToDraw.restore();
+    };
+
+    if (!txt.applyStyle && !txt.applyPalette) {
+      renderTransformedText(targetCtx);
+      return;
+    }
+
+    const tmpCanvas = document.createElement("canvas");
+    tmpCanvas.width = w; tmpCanvas.height = h;
+    renderTransformedText(tmpCanvas.getContext("2d", { willReadFrequently: true }));
+
+    const outCanvas = document.createElement("canvas");
+    outCanvas.width = w; outCanvas.height = h;
+    const outCtx = outCanvas.getContext("2d");
+
+    const opts = {
+      ...getGlobalOptions(),
+      bloco: txt.applyStyle ? Math.max(1, Math.round(state.bloco * scaleFactor)) : 1,
+      estilo: txt.applyStyle ? state.estiloKey : "pixel_art",
+      rgbPaleta: txt.applyPalette ? getActiveRgbPalette() : null,
+      chromaAtivo: false,
+      grade: false,
+      contorno: false
+    };
+
+    const imgData = tmpCanvas.getContext("2d").getImageData(0, 0, w, h).data;
+    window.EstiloRenderer.renderizar(outCtx, imgData, w, h, opts);
+    targetCtx.drawImage(outCanvas, 0, 0);
+  }
 
   // RENDERIZAÇÃO RETRÔ
   function renderRetroFrame() {
@@ -313,7 +590,31 @@
 
     const imgData = offCtx.getImageData(0, 0, w, h).data;
     const opts = getGlobalOptions();
-    window.EstiloRenderer.renderizar(ctx, imgData, w, h, opts);
+
+    ctx.clearRect(0, 0, w, h);
+
+    // 1. Desenha os textos configurados para ficarem ATRÁS da imagem/vídeo
+    state.texts
+      .filter((t) => t.layerPos === "back")
+      .forEach((t) => drawSingleText(ctx, t, w, h, 1));
+
+    // 2. Renderiza a mídia pixelizada em um canvas auxiliar para manter o fundo transparente (Chroma Key)
+    const layerCanvas = document.createElement("canvas");
+    layerCanvas.width = w;
+    layerCanvas.height = h;
+    window.EstiloRenderer.renderizar(
+      layerCanvas.getContext("2d"),
+      imgData,
+      w,
+      h,
+      opts
+    );
+    ctx.drawImage(layerCanvas, 0, 0);
+
+    // 3. Desenha os textos configurados para ficarem NA FRENTE da imagem/vídeo
+    state.texts
+      .filter((t) => t.layerPos === "front")
+      .forEach((t) => drawSingleText(ctx, t, w, h, 1));
   }
 
   function renderRetroFrameFullRes() {
@@ -335,8 +636,34 @@
       desenharAnimacaoTeste(fullOffCtx, W, H, state.synthTime);
     }
 
+    const scaleFactor = W / mainCanvas.width;
     const imgData = fullOffCtx.getImageData(0, 0, W, H).data;
-    window.EstiloRenderer.renderizar(fullCtx, imgData, W, H, getGlobalOptions());
+
+    fullCtx.clearRect(0, 0, W, H);
+
+    // 1. Desenha os textos configurados para ficarem ATRÁS em alta resolução
+    state.texts
+      .filter((t) => t.layerPos === "back")
+      .forEach((t) => drawSingleText(fullCtx, t, W, H, scaleFactor));
+
+    // 2. Renderiza a mídia pixelizada em um canvas auxiliar para manter transparência (Chroma Key)
+    const layerCanvas = document.createElement("canvas");
+    layerCanvas.width = W;
+    layerCanvas.height = H;
+    window.EstiloRenderer.renderizar(
+      layerCanvas.getContext("2d"),
+      imgData,
+      W,
+      H,
+      getGlobalOptions()
+    );
+    fullCtx.drawImage(layerCanvas, 0, 0);
+
+    // 3. Desenha os textos configurados para ficarem NA FRENTE em alta resolução
+    state.texts
+      .filter((t) => t.layerPos === "front")
+      .forEach((t) => drawSingleText(fullCtx, t, W, H, scaleFactor));
+
     return fullCanvas;
   }
 
@@ -354,10 +681,23 @@
     if (state.animFrameId) cancelAnimationFrame(state.animFrameId);
     let lastTime = performance.now();
     function loop(now) {
-      const dt = (now - lastTime)/1000; lastTime = now;
+      const dt = (now - lastTime) / 1000;
+      lastTime = now;
       if (state.layersActive) return;
-      if (state.mediaType === "video") { if (!videoEl.paused && !videoEl.ended) renderRetroFrame(); }
-      else if (state.mediaType === "synth" && state.isPlaying) { state.synthTime += dt; renderRetroFrame(); }
+
+      const hasAnimatedText = state.texts.some(t => t.active && t.anim && t.anim !== "none");
+
+      if (state.mediaType === "video") {
+        if (!videoEl.paused && !videoEl.ended) renderRetroFrame();
+        else if (hasAnimatedText) { state.synthTime += dt; renderRetroFrame(); }
+      } else if (state.mediaType === "synth" && state.isPlaying) {
+        state.synthTime += dt;
+        renderRetroFrame();
+      } else if (state.mediaType === "image" && hasAnimatedText) {
+        state.synthTime += dt;
+        renderRetroFrame();
+      }
+
       state.animFrameId = requestAnimationFrame(loop);
     }
     state.animFrameId = requestAnimationFrame(loop);
@@ -646,10 +986,31 @@
       }
     }
 
+    // 1. Guarda o desenho das 20 camadas em um canvas temporário
+    const layersSnapshot = document.createElement("canvas");
+    layersSnapshot.width = srcW;
+    layersSnapshot.height = srcH;
+    layersSnapshot.getContext("2d").drawImage(mainCanvas, 0, 0);
+
+    // 2. Limpa a tela e desenha na ordem certa: Texto Atrás -> Camadas -> Texto na Frente
+    ctx.clearRect(0, 0, srcW, srcH);
+
+    state.texts
+      .filter((t) => t.layerPos === "back")
+      .forEach((t) => drawSingleText(ctx, t, srcW, srcH, 1));
+
+    ctx.drawImage(layersSnapshot, 0, 0);
+
+    state.texts
+      .filter((t) => t.layerPos === "front")
+      .forEach((t) => drawSingleText(ctx, t, srcW, srcH, 1));
+
     state.layers.forEach((_, i) => {
       const el = document.getElementById(`layer_count_${i}`);
       if (el) el.textContent = layerCounts[i];
     });
+
+    if (!state.layersAnimFrameId) startLayersVideoLoop();
   }
 
   function renderLayersFrameFullRes() {
@@ -732,17 +1093,45 @@
         window.EstiloRenderer.desenharBloco(fullCtx, targetStyle, startX, startY, bw, bh, finalRgb, bx, by, px);
       }
     }
+
+    const scaleFactor = W / mainCanvas.width;
+    const layersSnapshot = document.createElement("canvas");
+    layersSnapshot.width = W;
+    layersSnapshot.height = H;
+    layersSnapshot.getContext("2d").drawImage(fullCanvas, 0, 0);
+
+    fullCtx.clearRect(0, 0, W, H);
+    state.texts
+      .filter((t) => t.layerPos === "back")
+      .forEach((t) => drawSingleText(fullCtx, t, W, H, scaleFactor));
+    fullCtx.drawImage(layersSnapshot, 0, 0);
+    state.texts
+      .filter((t) => t.layerPos === "front")
+      .forEach((t) => drawSingleText(fullCtx, t, W, H, scaleFactor));
+
     return fullCanvas;
   }
 
   function startLayersVideoLoop() {
-    function loop() {
-      if (state.layersActive && state.mediaType === "video" && !videoEl.paused && !videoEl.ended) {
+    if (state.layersAnimFrameId) cancelAnimationFrame(state.layersAnimFrameId);
+    let lastTime = performance.now();
+    function loop(now) {
+      const dt = (now - lastTime) / 1000;
+      lastTime = now;
+      if (!state.layersActive) { state.layersAnimFrameId = null; return; }
+
+      const hasAnimatedText = state.texts.some(t => t.active && t.anim && t.anim !== "none");
+
+      if (state.mediaType === "video" && !videoEl.paused && !videoEl.ended) {
+        renderLayersFrame();
+      } else if (hasAnimatedText) {
+        state.synthTime += dt;
         renderLayersFrame();
       }
-      if (state.layersActive) requestAnimationFrame(loop);
+
+      state.layersAnimFrameId = requestAnimationFrame(loop);
     }
-    requestAnimationFrame(loop);
+    state.layersAnimFrameId = requestAnimationFrame(loop);
   }
 
   mainCanvas.addEventListener("click", (e) => {
@@ -830,8 +1219,9 @@
     populateEstiloSelect(selectEstilo, "quadrado_media");
     document.getElementById("paletaCount").textContent = getPaletasKeys().length;
     document.getElementById("estiloCount").textContent = getEstilosIds().length;
-    atualizarPreviewPaleta();
+       atualizarPreviewPaleta();
     initLayers();
+    initTextControls();
 
     // CORREÇÃO CRÍTICA AQUI: Se o vídeo estiver tocando, só atualiza os estados, deixa o loop cuidar de desenhar
     document.getElementById("rangeBloco").addEventListener("input", (e) => {
@@ -1058,28 +1448,65 @@
         
         const gifCanvas = document.createElement("canvas"); gifCanvas.width = mainCanvas.width; gifCanvas.height = mainCanvas.height;
         const gifCtx = gifCanvas.getContext("2d", { willReadFrequently: true });
+        const videoDuration = videoEl.duration || 0;
+
+        function seekVideoGif(t) {
+          return new Promise((resolve) => {
+            const target = Math.max(0, Math.min(videoDuration - 0.001, t));
+            if (Math.abs(videoEl.currentTime - target) < 0.005) { resolve(); return; }
+            let done = false;
+            videoEl.addEventListener("seeked", () => { if (!done) { done = true; setTimeout(resolve, 30); } }, { once: true });
+            videoEl.currentTime = target;
+            setTimeout(() => { if (!done) { done = true; resolve(); } }, 1000);
+          });
+        }
         
         try {
           const gif = new GIF({ workers: 2, quality: Math.max(1, 30 - quality), width: gifCanvas.width, height: gifCanvas.height, workerScript: "gif.worker.js", transparent: "rgba(0,0,0,0)" });
           gif.on("finished", (blob) => { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `${name}.gif`; a.click(); setTimeout(() => { document.getElementById("gifProgress").classList.remove("active"); }, 2000); });
           
           for (let i = 0; i < totalFrames; i++) {
+            const frameTime = i / fps;
             gifCtx.clearRect(0, 0, gifCanvas.width, gifCanvas.height);
+
+            // 1. Textos ATRÁS (com tempo da animação sincronizado)
+            state.texts.filter(t => t.layerPos === "back").forEach(t => drawSingleText(gifCtx, t, gifCanvas.width, gifCanvas.height, 1, frameTime));
+
+            // 2. Renderiza a mídia (Várias Imagens, Vídeo, Synth ou Imagem Única)
+            const layerCanvas = document.createElement("canvas");
+            layerCanvas.width = gifCanvas.width; layerCanvas.height = gifCanvas.height;
+            const layerCtx = layerCanvas.getContext("2d");
+
             if (state.frames.length > 1 && state.mediaType === "image") {
               state.currentFrameIndex = i; state.currentImg = state.frames[i].img;
-              if (state.layersActive) { renderLayersFrame(); gifCtx.drawImage(mainCanvas, 0, 0); }
-              else { offCtx.drawImage(state.currentImg, 0, 0, gifCanvas.width, gifCanvas.height); window.EstiloRenderer.renderizar(gifCtx, offCtx.getImageData(0,0,gifCanvas.width, gifCanvas.height).data, gifCanvas.width, gifCanvas.height, getGlobalOptions()); }
+              if (state.layersActive) { renderLayersFrame(); layerCtx.drawImage(mainCanvas, 0, 0); }
+              else { offCtx.drawImage(state.currentImg, 0, 0, gifCanvas.width, gifCanvas.height); window.EstiloRenderer.renderizar(layerCtx, offCtx.getImageData(0,0,gifCanvas.width, gifCanvas.height).data, gifCanvas.width, gifCanvas.height, getGlobalOptions()); }
+            } else if (state.mediaType === "video" && videoDuration > 0) {
+              await seekVideoGif(frameTime % videoDuration);
+              if (state.layersActive) { renderLayersFrame(); layerCtx.drawImage(mainCanvas, 0, 0); }
+              else { offCtx.drawImage(videoEl, 0, 0, gifCanvas.width, gifCanvas.height); window.EstiloRenderer.renderizar(layerCtx, offCtx.getImageData(0,0,gifCanvas.width, gifCanvas.height).data, gifCanvas.width, gifCanvas.height, getGlobalOptions()); }
+            } else if (state.mediaType === "synth") {
+              desenharAnimacaoTeste(offCtx, gifCanvas.width, gifCanvas.height, frameTime);
+              window.EstiloRenderer.renderizar(layerCtx, offCtx.getImageData(0,0,gifCanvas.width, gifCanvas.height).data, gifCanvas.width, gifCanvas.height, getGlobalOptions());
             } else {
-              if (state.mediaType === "image") offCtx.drawImage(state.currentImg, 0, 0, gifCanvas.width, gifCanvas.height);
-              window.EstiloRenderer.renderizar(gifCtx, offCtx.getImageData(0,0,gifCanvas.width, gifCanvas.height).data, gifCanvas.width, gifCanvas.height, getGlobalOptions());
+              if (state.layersActive) { renderLayersFrame(); layerCtx.drawImage(mainCanvas, 0, 0); }
+              else {
+                if (state.mediaType === "image" && state.currentImg) offCtx.drawImage(state.currentImg, 0, 0, gifCanvas.width, gifCanvas.height);
+                window.EstiloRenderer.renderizar(layerCtx, offCtx.getImageData(0,0,gifCanvas.width, gifCanvas.height).data, gifCanvas.width, gifCanvas.height, getGlobalOptions());
+              }
             }
+
+            gifCtx.drawImage(layerCanvas, 0, 0);
+
+            // 3. Textos NA FRENTE (com tempo da animação sincronizado)
+            state.texts.filter(t => t.layerPos === "front").forEach(t => drawSingleText(gifCtx, t, gifCanvas.width, gifCanvas.height, 1, frameTime));
+
             gif.addFrame(gifCtx, { copy: true, delay }); fill.style.width = `${((i+1)/totalFrames)*100}%`; if (i % 3 === 0) await new Promise(r => setTimeout(r, 0));
           }
           gif.render();
-        } catch (err) {}
+        } catch (err) { console.error(err); }
       })();
     });
-
     document.getElementById("btnPlayFrames").addEventListener("click", () => {
       const btn = document.getElementById("btnPlayFrames");
       if (state.isPlayingFrames) { clearInterval(state.playFramesInterval); state.isPlayingFrames = false; btn.textContent = "▶ Play"; btn.classList.replace("danger", "primary"); }
@@ -1097,6 +1524,8 @@
     document.addEventListener("keydown", (e) => { if (state.frames.length > 1 && e.target.tagName !== "INPUT" && e.target.tagName !== "SELECT") { if (e.key === "ArrowLeft") irParaFrame(state.currentFrameIndex - 1); if (e.key === "ArrowRight") irParaFrame(state.currentFrameIndex + 1); } });
 
     document.getElementById("btnTestImg").click();
+	    document.getElementById("btnTestImg").click();
+    startRetroLoop();
   }
 
   init();
