@@ -61,9 +61,9 @@
     draggingTextIndex: null,
     dragOffset: { x: 0, y: 0 },
     texts: [
-      { id: 1, active: false, content: "TEXTO 1", x: 50, y: 60, size: 36, color: "#ffffff", strokeColor: "#000000", strokeWidth: 3, fontFamily: "Arial, sans-serif", layerPos: "front", applyStyle: false, applyPalette: false, align: "left", rotation: 0, anim: "none" },
-      { id: 2, active: false, content: "TEXTO 2", x: 50, y: 140, size: 28, color: "#00ffcc", strokeColor: "#000000", strokeWidth: 2, fontFamily: "monospace", layerPos: "front", applyStyle: true, applyPalette: true, align: "left", rotation: 0, anim: "none" },
-      { id: 3, active: false, content: "TEXTO 3", x: 50, y: 220, size: 32, color: "#ff0055", strokeColor: "#000000", strokeWidth: 2, fontFamily: "Impact, sans-serif", layerPos: "back", applyStyle: false, applyPalette: false, align: "left", rotation: 0, anim: "none" }
+      { id: 1, active: false, content: "TEXTO 1", x: 50, y: 60, size: 36, color: "#ffffff", strokeColor: "#000000", strokeWidth: 3, fontFamily: "Arial, sans-serif", layerPos: "front", applyStyle: false, applyPalette: false, align: "left", rotation: 0, anim: "none", speed: 1 },
+      { id: 2, active: false, content: "TEXTO 2", x: 50, y: 140, size: 28, color: "#00ffcc", strokeColor: "#000000", strokeWidth: 2, fontFamily: "monospace", layerPos: "front", applyStyle: true, applyPalette: true, align: "left", rotation: 0, anim: "none", speed: 1 },
+      { id: 3, active: false, content: "TEXTO 3", x: 50, y: 220, size: 32, color: "#ff0055", strokeColor: "#000000", strokeWidth: 2, fontFamily: "Impact, sans-serif", layerPos: "back", applyStyle: false, applyPalette: false, align: "left", rotation: 0, anim: "none", speed: 1 }
     ]
     };
 
@@ -435,8 +435,16 @@
         </div>
 
         <div style="display:flex; align-items:center; gap:6px; font-size:11px; color:#a1a1aa;">
-          <span>Rotação: <strong id="lbl_rot_${idx}">${txt.rotation}°</strong></span>
+          <span>Rot: <strong id="lbl_rot_${idx}">${txt.rotation}°</strong></span>
           <input type="range" id="txt_rot_${idx}" min="-180" max="180" value="${txt.rotation}" style="flex:1;">
+          <select id="txt_spd_${idx}" style="width:72px; background:#09090b; color:#00ffcc; border:1px solid #3f3f46; border-radius:4px; padding:2px;" title="Velocidade da Animação">
+            <option value="0.25" ${(txt.speed || 1) == 0.25 ? "selected" : ""}>0.25x</option>
+            <option value="0.5" ${(txt.speed || 1) == 0.5 ? "selected" : ""}>0.5x</option>
+            <option value="1" ${(txt.speed || 1) == 1 ? "selected" : ""}>1.0x</option>
+            <option value="1.5" ${(txt.speed || 1) == 1.5 ? "selected" : ""}>1.5x</option>
+            <option value="2" ${(txt.speed || 1) == 2 ? "selected" : ""}>2.0x</option>
+            <option value="3" ${(txt.speed || 1) == 3 ? "selected" : ""}>3.0x</option>
+          </select>
         </div>
 
         <div style="display:flex; gap:8px; font-size:11px; color:#e4e4e7; background:#27272a; padding:4px 6px; border-radius:4px;">
@@ -485,7 +493,12 @@
         document.getElementById(`lbl_rot_${idx}`).textContent = `${txt.rotation}°`;
         triggerRender();
       });
+      document.getElementById(`txt_spd_${idx}`).addEventListener("change", e => {
+        txt.speed = parseFloat(e.target.value) || 1;
+        triggerRender();
+      });
     });
+	
 
     const btnImportFont = document.getElementById("btnImportFont");
     const fontFileInput = document.getElementById("fontFileInput");
@@ -512,12 +525,108 @@
     }
   }
 
+    function initProjectSaveLoad() {
+    const btnSave = document.getElementById("btnSaveProject");
+    const btnLoad = document.getElementById("btnLoadProject");
+    const fileProjInput = document.getElementById("projectFileInput");
+
+    if (btnSave) {
+      btnSave.addEventListener("click", () => {
+        const projectData = {
+          version: "2027.1",
+          savedAt: new Date().toISOString(),
+          globals: {
+            bloco: state.bloco,
+            paletteKey: state.paletteKey,
+            estiloKey: state.estiloKey,
+            grade: state.grade,
+            contorno: state.contorno,
+            contornoForca: state.contornoForca,
+            brilho: state.brilho,
+            contraste: state.contraste,
+            chromaAtivo: state.chromaAtivo,
+            chromaHex: state.chromaHex,
+            chromaTol: state.chromaTol,
+            customPalette: state.customPalette,
+            useCustomPalette: state.useCustomPalette
+          },
+          texts: state.texts.map(({ updateFontDropdown, ...rest }) => rest),
+          layersActive: state.layersActive,
+          layers: state.layers
+        };
+
+        const name = (document.getElementById("fileName")?.value.trim() || "meu_projeto_pixel") + ".json";
+        const blob = new Blob([JSON.stringify(projectData, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = name;
+        a.click();
+        URL.revokeObjectURL(url);
+        statusBadge.textContent = `💾 Projeto "${name}" salvo!`;
+      });
+    }
+
+    if (btnLoad && fileProjInput) {
+      btnLoad.addEventListener("click", () => fileProjInput.click());
+      fileProjInput.addEventListener("change", async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+          const text = await file.text();
+          const data = JSON.parse(text);
+
+          if (data.globals) {
+            Object.assign(state, data.globals);
+            document.getElementById("rangeBloco").value = state.bloco;
+            document.getElementById("lblBloco").textContent = `${state.bloco} px`;
+            selectPaleta.value = state.paletteKey;
+            selectEstilo.value = state.estiloKey;
+            document.getElementById("chkGrade").checked = state.grade;
+            document.getElementById("chkContorno").checked = state.contorno;
+            document.getElementById("rangeContornoForca").value = state.contornoForca;
+            document.getElementById("lblContornoForca").textContent = state.contornoForca;
+            document.getElementById("rangeBrilho").value = state.brilho;
+            document.getElementById("lblBrilho").textContent = state.brilho;
+            document.getElementById("rangeContraste").value = state.contraste;
+            document.getElementById("lblContraste").textContent = state.contraste;
+            document.getElementById("chkChroma").checked = state.chromaAtivo;
+            document.getElementById("chromaColor").value = state.chromaHex;
+            document.getElementById("rangeTol").value = state.chromaTol;
+            document.getElementById("lblTol").textContent = state.chromaTol;
+            atualizarPreviewPaleta();
+          }
+
+          if (Array.isArray(data.texts)) {
+            state.texts = data.texts;
+            initTextControls();
+          }
+
+          if (Array.isArray(data.layers) && data.layers.length > 0) {
+            state.layers = data.layers;
+            buildLayersUI();
+          }
+
+          state.layersActive = Boolean(data.layersActive);
+          if (state.layersActive) renderLayersFrame();
+          else renderRetroFrame();
+
+          statusBadge.textContent = `✅ Projeto "${file.name}" carregado!`;
+        } catch (err) {
+          alert("Erro ao ler arquivo de projeto: " + err.message);
+        }
+        fileProjInput.value = "";
+      });
+    }
+  }
+  
   // Função que desenha um texto aplicando (ou não) Paleta e Estilo
   // Função que desenha um texto aplicando (ou não) Paleta, Estilo e as 20 Animações
   function drawSingleText(targetCtx, txt, w, h, scaleFactor = 1, customTime = null) {
     if (!txt.active || !txt.content) return;
 
-    const t = customTime !== null ? customTime : (state.mediaType === "video" ? videoEl.currentTime : state.synthTime);
+    const rawTime = customTime !== null ? customTime : (state.mediaType === "video" ? videoEl.currentTime : state.synthTime);
+    const t = rawTime * (txt.speed || 1);
     const anim = txt.anim || "none";
     const cycle = (t % 3.0) / 3.0;
     const easeOut = (x) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
@@ -1471,6 +1580,7 @@
        atualizarPreviewPaleta();
     initLayers();
     initTextControls();
+	initProjectSaveLoad();
 
     // CORREÇÃO CRÍTICA AQUI: Se o vídeo estiver tocando, só atualiza os estados, deixa o loop cuidar de desenhar
     document.getElementById("rangeBloco").addEventListener("input", (e) => {
@@ -1718,6 +1828,7 @@
             const frameTime = i / fps;
             gifCtx.clearRect(0, 0, gifCanvas.width, gifCanvas.height);
 
+			
             // 1. Textos ATRÁS (com tempo da animação sincronizado)
             state.texts.filter(t => t.layerPos === "back").forEach(t => drawSingleText(gifCtx, t, gifCanvas.width, gifCanvas.height, 1, frameTime));
 
