@@ -403,10 +403,34 @@
           </select>
           <select id="txt_anim_${idx}" style="background:#09090b; color:#fff; border:1px solid #3f3f46; border-radius:4px; padding:3px;" title="Animação">
             <option value="none" ${txt.anim === "none" ? "selected" : ""}>Sem Animação</option>
-            <option value="float" ${txt.anim === "float" ? "selected" : ""}>🌊 Flutuar</option>
-            <option value="blink" ${txt.anim === "blink" ? "selected" : ""}>⚡ Piscar</option>
-            <option value="pulse" ${txt.anim === "pulse" ? "selected" : ""}>💓 Pulsar</option>
-            <option value="typewriter" ${txt.anim === "typewriter" ? "selected" : ""}>⌨ Máquina Escrever</option>
+            <optgroup label="1. Clássicas e Modernas">
+              <option value="fade" ${txt.anim === "fade" ? "selected" : ""}>1. Fade In / Fade Out</option>
+              <option value="slide" ${txt.anim === "slide" ? "selected" : ""}>2. Slide Up (Máscara)</option>
+              <option value="bounce" ${txt.anim === "bounce" ? "selected" : ""}>3. Bounce (Quique Elástico)</option>
+              <option value="blur" ${txt.anim === "blur" ? "selected" : ""}>4. Tracking / Blur In</option>
+              <option value="pop" ${txt.anim === "pop" ? "selected" : ""}>5. Pop / Scale Up</option>
+            </optgroup>
+            <optgroup label="2. Tipografia Cinética">
+              <option value="kinetic" ${txt.anim === "kinetic" ? "selected" : ""}>6. Kinetic Typography</option>
+              <option value="wave" ${txt.anim === "wave" ? "selected" : ""}>7. Staggered Wave (Onda)</option>
+              <option value="slice" ${txt.anim === "slice" ? "selected" : ""}>8. Split / Slice Text</option>
+              <option value="flip3d" ${txt.anim === "flip3d" ? "selected" : ""}>9. Roll / Flip 3D</option>
+              <option value="marquee" ${txt.anim === "marquee" ? "selected" : ""}>10. Marquee (Faixa Contínua)</option>
+            </optgroup>
+            <optgroup label="3. Tech, Retrô e Digitais">
+              <option value="typewriter" ${txt.anim === "typewriter" ? "selected" : ""}>11. Typewriter (Máquina)</option>
+              <option value="glitch" ${txt.anim === "glitch" ? "selected" : ""}>12. Glitch (Falha RGB)</option>
+              <option value="neon" ${txt.anim === "neon" ? "selected" : ""}>13. Neon Flicker (Luz Piscando)</option>
+              <option value="scramble" ${txt.anim === "scramble" ? "selected" : ""}>14. Scramble / Decode</option>
+              <option value="highlight" ${txt.anim === "highlight" ? "selected" : ""}>15. Highlight / Marca-Texto</option>
+            </optgroup>
+            <optgroup label="4. Orgânicas, Líquidas e 3D">
+              <option value="liquid" ${txt.anim === "liquid" ? "selected" : ""}>16. Liquid Distortion</option>
+              <option value="morph" ${txt.anim === "morph" ? "selected" : ""}>17. Morphing (Metamorfose)</option>
+              <option value="handwritten" ${txt.anim === "handwritten" ? "selected" : ""}>18. Handwritten (Traço)</option>
+              <option value="extrude3d" ${txt.anim === "extrude3d" ? "selected" : ""}>19. 3D Extrude & Inflate</option>
+              <option value="particles" ${txt.anim === "particles" ? "selected" : ""}>20. Particle Dissolve</option>
+            </optgroup>
           </select>
         </div>
 
@@ -489,28 +513,18 @@
   }
 
   // Função que desenha um texto aplicando (ou não) Paleta e Estilo
+  // Função que desenha um texto aplicando (ou não) Paleta, Estilo e as 20 Animações
   function drawSingleText(targetCtx, txt, w, h, scaleFactor = 1, customTime = null) {
     if (!txt.active || !txt.content) return;
 
     const t = customTime !== null ? customTime : (state.mediaType === "video" ? videoEl.currentTime : state.synthTime);
+    const anim = txt.anim || "none";
+    const cycle = (t % 3.0) / 3.0;
+    const easeOut = (x) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
 
-    // Animação: Piscar
-    if (txt.anim === "blink" && Math.floor(t * 3) % 2 === 1) return;
-
-    // Animação: Máquina de Escrever
-    let displayText = txt.content;
-    if (txt.anim === "typewriter") {
-      const chars = Math.max(1, Math.floor((t * 8) % (txt.content.length + 4)));
-      displayText = txt.content.slice(0, chars);
-    }
-
-    // Animações: Flutuar e Pulsar
-    const floatOffsetY = txt.anim === "float" ? Math.sin(t * 4) * 8 * scaleFactor : 0;
-    const pulseScale = txt.anim === "pulse" ? 1 + Math.sin(t * 6) * 0.12 : 1;
-
-    const scaledSize = Math.round(txt.size * scaleFactor * pulseScale);
+    const scaledSize = Math.round(txt.size * scaleFactor);
     const scaledX = txt.x * scaleFactor;
-    const scaledY = txt.y * scaleFactor + floatOffsetY;
+    const scaledY = txt.y * scaleFactor;
     const rad = ((txt.rotation || 0) * Math.PI) / 180;
 
     const renderTransformedText = (ctxToDraw) => {
@@ -521,22 +535,257 @@
       ctxToDraw.textBaseline = "top";
       ctxToDraw.textAlign = txt.align || "left";
 
-      if (txt.strokeWidth > 0) {
-        ctxToDraw.strokeStyle = txt.strokeColor;
-        ctxToDraw.lineWidth = txt.strokeWidth * scaleFactor;
-        ctxToDraw.lineJoin = "round";
-        ctxToDraw.strokeText(displayText, 0, 0);
+      const fullWidth = ctxToDraw.measureText(txt.content).width;
+      const alignOffset = txt.align === "center" ? -fullWidth / 2 : txt.align === "right" ? -fullWidth : 0;
+
+      const drawBaseText = (str, ox = 0, oy = 0, customFill = null, customStroke = null) => {
+        if (txt.strokeWidth > 0) {
+          ctxToDraw.strokeStyle = customStroke || txt.strokeColor;
+          ctxToDraw.lineWidth = txt.strokeWidth * scaleFactor;
+          ctxToDraw.lineJoin = "round";
+          ctxToDraw.strokeText(str, ox, oy);
+        }
+        ctxToDraw.fillStyle = customFill || txt.color;
+        ctxToDraw.fillText(str, ox, oy);
+      };
+
+      const drawPerChar = (fn) => {
+        ctxToDraw.textAlign = "left";
+        let curX = alignOffset;
+        for (let i = 0; i < txt.content.length; i++) {
+          const ch = txt.content[i];
+          const cw = ctxToDraw.measureText(ch).width;
+          ctxToDraw.save();
+          fn(ch, curX, cw, i);
+          ctxToDraw.restore();
+          curX += cw;
+        }
+      };
+
+      switch (anim) {
+        case "fade": {
+          ctxToDraw.globalAlpha = 0.5 + 0.5 * Math.sin(t * 2.5);
+          drawBaseText(txt.content);
+          break;
+        }
+        case "slide": {
+          const p = easeOut(Math.min(1, cycle * 2.2));
+          ctxToDraw.beginPath();
+          ctxToDraw.rect(alignOffset - 10, -4, fullWidth + 20, scaledSize * 1.25);
+          ctxToDraw.clip();
+          drawBaseText(txt.content, 0, (1 - p) * scaledSize * 1.2);
+          break;
+        }
+        case "bounce": {
+          const p = Math.min(1, cycle * 2.0);
+          const c4 = (2 * Math.PI) / 3;
+          const elastic = p === 0 ? 0 : p === 1 ? 1 : Math.pow(2, -10 * p) * Math.sin((p * 10 - 0.75) * c4) + 1;
+          drawBaseText(txt.content, 0, (1 - elastic) * -45 * scaleFactor);
+          break;
+        }
+        case "blur": {
+          const p = easeOut(Math.min(1, cycle * 2.0));
+          const spacing = (1 - p) * 18 * scaleFactor;
+          ctxToDraw.globalAlpha = p;
+          if ("filter" in ctxToDraw) ctxToDraw.filter = `blur(${((1 - p) * 6).toFixed(1)}px)`;
+          drawPerChar((ch, cx, cw, i) => {
+            const centerShift = (i - txt.content.length / 2) * spacing;
+            drawBaseText(ch, cx + centerShift, 0);
+          });
+          break;
+        }
+        case "pop": {
+          const beat = (t * 2.2) % 1;
+          const sc = beat < 0.2 ? 0.6 + (beat / 0.2) * 0.55 : 1.15 - ((beat - 0.2) / 0.8) * 0.15;
+          ctxToDraw.translate(alignOffset + fullWidth / 2, scaledSize * 0.5);
+          ctxToDraw.scale(sc, sc);
+          ctxToDraw.translate(-(alignOffset + fullWidth / 2), -scaledSize * 0.5);
+          drawBaseText(txt.content);
+          break;
+        }
+        case "kinetic": {
+          const step = Math.floor(t * 4) % 4;
+          const angles = [0, -0.14, 0.12, 0];
+          const scales = [1.18, 0.92, 1.12, 1.0];
+          ctxToDraw.translate(alignOffset + fullWidth / 2, scaledSize * 0.5);
+          ctxToDraw.rotate(angles[step]);
+          ctxToDraw.scale(scales[step], scales[step]);
+          ctxToDraw.translate(-(alignOffset + fullWidth / 2), -scaledSize * 0.5);
+          drawBaseText(txt.content);
+          break;
+        }
+        case "wave": {
+          drawPerChar((ch, cx, cw, i) => {
+            const wy = Math.sin(t * 6 + i * 0.6) * 8 * scaleFactor;
+            drawBaseText(ch, cx, wy);
+          });
+          break;
+        }
+        case "slice": {
+          const p = easeOut(Math.min(1, cycle * 2.2));
+          const offset = (1 - p) * 35 * scaleFactor;
+          const halfH = scaledSize * 0.58;
+          ctxToDraw.save();
+          ctxToDraw.beginPath();
+          ctxToDraw.rect(alignOffset - 100, -10, fullWidth + 200, halfH + 10);
+          ctxToDraw.clip();
+          drawBaseText(txt.content, -offset, 0);
+          ctxToDraw.restore();
+
+          ctxToDraw.save();
+          ctxToDraw.beginPath();
+          ctxToDraw.rect(alignOffset - 100, halfH, fullWidth + 200, scaledSize);
+          ctxToDraw.clip();
+          drawBaseText(txt.content, offset, 0);
+          ctxToDraw.restore();
+          break;
+        }
+        case "flip3d": {
+          drawPerChar((ch, cx, cw, i) => {
+            const phase = Math.max(0, Math.min(1, cycle * 2.5 - i * 0.08));
+            const scaleY = Math.cos((1 - phase) * (Math.PI / 2));
+            ctxToDraw.translate(cx, scaledSize * 0.55);
+            ctxToDraw.scale(1, Math.max(0.05, scaleY));
+            drawBaseText(ch, 0, -scaledSize * 0.55);
+          });
+          break;
+        }
+        case "marquee": {
+          const span = fullWidth + 60 * scaleFactor;
+          const shift = -((t * 90 * scaleFactor) % span);
+          drawBaseText(txt.content, shift, 0);
+          drawBaseText(txt.content, shift + span, 0);
+          break;
+        }
+        case "typewriter": {
+          const total = txt.content.length;
+          const chars = Math.min(total, Math.floor((t * 9) % (total + 6)));
+          const cursor = Math.floor(t * 4) % 2 === 0 ? "_" : "";
+          drawBaseText(txt.content.slice(0, chars) + cursor);
+          break;
+        }
+        case "glitch": {
+          const activeGlitch = Math.sin(t * 17) > 0.45 || Math.cos(t * 29) > 0.75;
+          if (activeGlitch) {
+            const gx = (Math.sin(t * 91) * 6) * scaleFactor;
+            const gy = (Math.cos(t * 73) * 2) * scaleFactor;
+            ctxToDraw.globalCompositeOperation = "screen";
+            drawBaseText(txt.content, gx, gy, "#ff0044", "transparent");
+            drawBaseText(txt.content, -gx, -gy, "#00ffff", "transparent");
+            ctxToDraw.globalCompositeOperation = "source-over";
+          }
+          drawBaseText(txt.content, activeGlitch ? Math.sin(t * 50) * 2 : 0, 0);
+          break;
+        }
+        case "neon": {
+          const flicker = Math.sin(t * 37) * Math.cos(t * 53) > -0.65;
+          ctxToDraw.shadowColor = txt.color;
+          ctxToDraw.shadowBlur = flicker ? 18 * scaleFactor : 2;
+          ctxToDraw.globalAlpha = flicker ? 1 : 0.35;
+          drawBaseText(txt.content);
+          if (flicker) drawBaseText(txt.content, 0, 0, "#ffffff", "transparent");
+          break;
+        }
+        case "scramble": {
+          const glyphs = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&*";
+          const reveal = Math.floor(easeOut(Math.min(1, cycle * 1.8)) * txt.content.length);
+          let out = "";
+          for (let i = 0; i < txt.content.length; i++) {
+            if (txt.content[i] === " " || i < reveal) out += txt.content[i];
+            else out += glyphs[Math.floor((t * 25 + i * 7) % glyphs.length)];
+          }
+          drawBaseText(out);
+          break;
+        }
+        case "highlight": {
+          const p = easeOut(Math.min(1, cycle * 2.2));
+          ctxToDraw.fillStyle = txt.strokeColor === "#000000" ? "#ff0055" : txt.strokeColor;
+          ctxToDraw.fillRect(alignOffset - 4, scaledSize * 0.1, (fullWidth + 8) * p, scaledSize * 0.95);
+          drawBaseText(txt.content);
+          break;
+        }
+        case "liquid": {
+          const slices = 12;
+          const sliceH = (scaledSize * 1.25) / slices;
+          for (let s = 0; s < slices; s++) {
+            ctxToDraw.save();
+            ctxToDraw.beginPath();
+            ctxToDraw.rect(alignOffset - 30, s * sliceH, fullWidth + 60, sliceH + 0.5);
+            ctxToDraw.clip();
+            const waveX = Math.sin(t * 5 + s * 0.7) * 5 * scaleFactor;
+            drawBaseText(txt.content, waveX, 0);
+            ctxToDraw.restore();
+          }
+          break;
+        }
+        case "morph": {
+          const m = Math.sin(t * 3);
+          const sx = 1 + m * 0.22;
+          const sy = 1 - m * 0.18;
+          ctxToDraw.translate(alignOffset + fullWidth / 2, scaledSize * 0.55);
+          ctxToDraw.transform(sx, m * 0.15, -m * 0.15, sy, 0, 0);
+          ctxToDraw.translate(-(alignOffset + fullWidth / 2), -scaledSize * 0.55);
+          drawBaseText(txt.content);
+          break;
+        }
+        case "handwritten": {
+          const p = easeOut(Math.min(1, cycle * 1.6));
+          ctxToDraw.save();
+          ctxToDraw.beginPath();
+          ctxToDraw.rect(alignOffset - 6, -6, (fullWidth + 12) * p, scaledSize * 1.35);
+          ctxToDraw.clip();
+          ctxToDraw.strokeStyle = txt.color;
+          ctxToDraw.lineWidth = Math.max(1.5, 2 * scaleFactor);
+          ctxToDraw.strokeText(txt.content, 0, 0);
+          if (p > 0.65) {
+            ctxToDraw.globalAlpha = (p - 0.65) / 0.35;
+            drawBaseText(txt.content);
+          }
+          ctxToDraw.restore();
+          break;
+        }
+        case "extrude3d": {
+          const depth = Math.round(6 * scaleFactor);
+          const floatY = Math.sin(t * 3.5) * 5 * scaleFactor;
+          for (let d = depth; d >= 1; d--) {
+            ctxToDraw.fillStyle = d === depth ? "#000000" : txt.strokeColor;
+            ctxToDraw.fillText(txt.content, d, d + floatY);
+          }
+          drawBaseText(txt.content, 0, floatY);
+          break;
+        }
+        case "particles": {
+          const p = Math.max(0, (cycle - 0.35) / 0.65);
+          if (p <= 0) {
+            drawBaseText(txt.content);
+          } else {
+            ctxToDraw.globalAlpha = Math.max(0, 1 - p * 1.3);
+            drawBaseText(txt.content, 0, -p * 10 * scaleFactor);
+            ctxToDraw.globalAlpha = Math.max(0, 1 - p);
+            const count = 28;
+            for (let k = 0; k < count; k++) {
+              const seed = k * 19.37;
+              const px = alignOffset + ((k / count) * fullWidth) + Math.sin(seed) * p * 35 * scaleFactor;
+              const py = (scaledSize * 0.5) + (Math.cos(seed) - 0.6) * p * 45 * scaleFactor;
+              const sz = Math.max(2, (1 - p) * 4 * scaleFactor);
+              ctxToDraw.fillStyle = k % 2 === 0 ? txt.color : txt.strokeColor;
+              ctxToDraw.fillRect(px, py, sz, sz);
+            }
+          }
+          break;
+        }
+        default: {
+          drawBaseText(txt.content);
+          break;
+        }
       }
-      ctxToDraw.fillStyle = txt.color;
-      ctxToDraw.fillText(displayText, 0, 0);
 
       if (ctxToDraw === targetCtx && state.texts[state.draggingTextIndex] === txt) {
-        const wText = ctxToDraw.measureText(displayText).width;
-        const boxX = txt.align === "center" ? -wText / 2 : txt.align === "right" ? -wText : 0;
+        const boxX = txt.align === "center" ? -fullWidth / 2 : txt.align === "right" ? -fullWidth : 0;
         ctxToDraw.strokeStyle = "#00ffcc";
         ctxToDraw.lineWidth = 1.5 * scaleFactor;
         ctxToDraw.setLineDash([4, 4]);
-        ctxToDraw.strokeRect(boxX - 4, -4, wText + 8, scaledSize * 1.2 + 8);
+        ctxToDraw.strokeRect(boxX - 4, -4, fullWidth + 8, scaledSize * 1.2 + 8);
       }
       ctxToDraw.restore();
     };
