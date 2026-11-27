@@ -108,7 +108,22 @@ window.BANCO_ESTILOS = [
   { id: "ultravioleta", nome: "107. Ultravioleta" },
   { id: "raios_x", nome: "108. Raios-X" },
   { id: "termico", nome: "109. Câmera Térmica" },
-  { id: "sonar", nome: "110. Sonar" }
+  { id: "sonar", nome: "110. Sonar" },
+  { id: "cyber_hud", nome: "111. Cyber HUD (Mira)" },
+  { id: "vortex", nome: "112. Vórtice Espiral" },
+  { id: "prism_rgb", nome: "113. Prisma RGB" },
+  { id: "pixel_hearts", nome: "114. Coração Pixelado 8-Bit" },
+  { id: "matrix_blocks", nome: "115. Blocos Matrix" },
+  { id: "stained_hexagon", nome: "116. Hexágono Vitral" },
+  { id: "starfield", nome: "117. Campo Estrelado" },
+  { id: "liquid_drop", nome: "118. Gota Líquida" },
+  { id: "glitch_bars", nome: "119. Barras de Interferência" },
+  { id: "origami", nome: "120. Dobradura Origami" },
+  { id: "radar_blip", nome: "121. Ponto de Radar" },
+  { id: "blueprint_tech", nome: "122. Projeto Técnico" },
+  { id: "retro_tv", nome: "123. TV Tubo Curva" },
+  { id: "kaleidoscope", nome: "124. Caleidoscópio" },
+  { id: "cyber_skull", nome: "125. Caveira 8-Bit" }
 ];
 
 window.EstiloRenderer = {
@@ -321,6 +336,153 @@ window.EstiloRenderer = {
       case "raios_x": { ctx.fillStyle="#000"; ctx.fillRect(x,y,w,h); ctx.fillStyle=`rgba(255,255,255,${luma})`; ctx.beginPath(); ctx.arc(cx,cy,r*0.4,0,Math.PI*2); ctx.fill(); break; }
       case "termico": { ctx.fillStyle="#000"; ctx.fillRect(x,y,w,h); const g=ctx.createLinearGradient(x,y,x+w,y+h); g.addColorStop(0,`rgba(255,0,0,${luma})`); g.addColorStop(0.5,`rgba(255,255,0,${luma})`); g.addColorStop(1,`rgba(0,0,255,${luma})`); ctx.fillStyle=g; ctx.fillRect(x,y,w,h); break; }
       case "sonar": { ctx.fillStyle="#0a1a0a"; ctx.fillRect(x,y,w,h); ctx.strokeStyle=cor; ctx.lineWidth=Math.max(1,w*0.1); for(let i=1;i<=3;i++){ctx.beginPath(); ctx.arc(cx,cy,r*0.15*i,0,Math.PI*2); ctx.stroke();} break; }
+	        case "cyber_hud": {
+        ctx.fillStyle = "#04080c"; ctx.fillRect(x, y, w, h);
+        ctx.strokeStyle = cor; ctx.lineWidth = Math.max(1, w * 0.1);
+        const m = w * 0.25;
+        ctx.beginPath();
+        ctx.moveTo(x, y + m); ctx.lineTo(x, y); ctx.lineTo(x + m, y);
+        ctx.moveTo(x + w - m, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + m);
+        ctx.moveTo(x, y + h - m); ctx.lineTo(x, y + h); ctx.lineTo(x + m, y + h);
+        ctx.moveTo(x + w - m, y + h); ctx.lineTo(x + w, y + h); ctx.lineTo(x + w, y + h - m);
+        ctx.stroke();
+        ctx.fillStyle = cor; ctx.fillRect(cx - w * 0.08, cy - h * 0.08, w * 0.16, h * 0.16);
+        break;
+      }
+      case "vortex": {
+        ctx.fillStyle = "#080612"; ctx.fillRect(x, y, w, h);
+        ctx.save(); ctx.translate(cx, cy);
+        ctx.rotate((gx + gy) * 0.35);
+        ctx.fillStyle = cor;
+        ctx.fillRect(-w * 0.42, -h * 0.14, w * 0.84, h * 0.28);
+        ctx.fillRect(-w * 0.14, -h * 0.42, w * 0.28, h * 0.84);
+        ctx.restore();
+        break;
+      }
+      case "prism_rgb": {
+        ctx.fillStyle = "#050508"; ctx.fillRect(x, y, w, h);
+        ctx.globalCompositeOperation = "screen";
+        ctx.fillStyle = `rgb(${rgb[0] | 0}, 0, 0)`;
+        ctx.beginPath(); ctx.arc(cx - w * 0.14, cy - h * 0.1, r * 0.34, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = `rgb(0, ${rgb[1] | 0}, 0)`;
+        ctx.beginPath(); ctx.arc(cx + w * 0.14, cy - h * 0.1, r * 0.34, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = `rgb(0, 0, ${rgb[2] | 0})`;
+        ctx.beginPath(); ctx.arc(cx, cy + h * 0.14, r * 0.34, 0, Math.PI * 2); ctx.fill();
+        ctx.globalCompositeOperation = "source-over";
+        break;
+      }
+      case "pixel_hearts": {
+        ctx.fillStyle = "#12060c"; ctx.fillRect(x, y, w, h);
+        ctx.fillStyle = cor;
+        const p = w / 5;
+        ctx.fillRect(x + p, y + p * 0.6, p, p);
+        ctx.fillRect(x + p * 3, y + p * 0.6, p, p);
+        ctx.fillRect(x + p * 0.5, y + p * 1.5, p * 4, p * 1.4);
+        ctx.fillRect(x + p * 1.2, y + p * 2.8, p * 2.6, p);
+        ctx.fillRect(x + p * 2, y + p * 3.7, p, p * 0.8);
+        break;
+      }
+      case "matrix_blocks": {
+        ctx.fillStyle = "#020a04"; ctx.fillRect(x, y, w, h);
+        ctx.fillStyle = cor;
+        const bars = 4, bw2 = w / bars;
+        for (let i = 0; i < bars; i++) {
+          const bh2 = ((Math.sin(gx * 5.1 + gy * 2.3 + i * 1.7) * 0.5 + 0.5) * 0.8 + 0.2) * h;
+          ctx.fillRect(x + i * bw2 + 0.5, y, Math.max(1, bw2 - 1), bh2);
+        }
+        break;
+      }
+      case "stained_hexagon": {
+        ctx.fillStyle = "#0b0b0e"; ctx.fillRect(x, y, w, h);
+        ctx.fillStyle = cor;
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const a = (Math.PI / 3) * i;
+          const px = cx + r * 0.45 * Math.cos(a), py = cy + r * 0.45 * Math.sin(a);
+          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = "rgba(255,255,255,0.45)"; ctx.lineWidth = 1; ctx.stroke();
+        break;
+      }
+      case "starfield": {
+        ctx.fillStyle = "#03030a"; ctx.fillRect(x, y, w, h);
+        ctx.fillStyle = cor;
+        ctx.beginPath(); ctx.arc(cx, cy, Math.max(1, r * 0.32 * luma + 1), 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(cx - 0.5, cy - 0.5, Math.max(1, w * 0.12), Math.max(1, h * 0.12));
+        break;
+      }
+      case "liquid_drop": {
+        ctx.fillStyle = "#060c14"; ctx.fillRect(x, y, w, h);
+        ctx.fillStyle = cor;
+        ctx.beginPath(); ctx.arc(cx, cy, r * 0.44, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,0.5)";
+        ctx.beginPath(); ctx.arc(cx - r * 0.15, cy - r * 0.15, r * 0.12, 0, Math.PI * 2); ctx.fill();
+        break;
+      }
+      case "glitch_bars": {
+        ctx.fillStyle = "#08080a"; ctx.fillRect(x, y, w, h);
+        const shift = Math.sin(gy * 3.7 + gx * 1.1) * w * 0.25;
+        ctx.fillStyle = cor;
+        ctx.fillRect(x + shift, y, w * 0.85, h * 0.42);
+        ctx.fillRect(x - shift, y + h * 0.52, w * 0.85, h * 0.42);
+        break;
+      }
+      case "origami": {
+        ctx.fillStyle = cor; ctx.fillRect(x, y, w, h);
+        ctx.fillStyle = "rgba(255,255,255,0.28)";
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + w, y); ctx.lineTo(cx, cy); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "rgba(0,0,0,0.32)";
+        ctx.beginPath(); ctx.moveTo(x + w, y); ctx.lineTo(x + w, y + h); ctx.lineTo(cx, cy); ctx.closePath(); ctx.fill();
+        break;
+      }
+      case "radar_blip": {
+        ctx.fillStyle = "#021206"; ctx.fillRect(x, y, w, h);
+        ctx.strokeStyle = "rgba(0,255,100,0.25)"; ctx.lineWidth = 1;
+        ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+        ctx.fillStyle = cor;
+        ctx.beginPath(); ctx.arc(cx, cy, Math.max(1.2, r * 0.36), 0, Math.PI * 2); ctx.fill();
+        break;
+      }
+      case "blueprint_tech": {
+        ctx.fillStyle = "#0a1e38"; ctx.fillRect(x, y, w, h);
+        ctx.strokeStyle = cor; ctx.lineWidth = Math.max(1, w * 0.09);
+        ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + w, y + h); ctx.stroke();
+        break;
+      }
+      case "retro_tv": {
+        ctx.fillStyle = "#050507"; ctx.fillRect(x, y, w, h);
+        ctx.fillStyle = cor;
+        const pad = w * 0.08;
+        ctx.beginPath();
+        ctx.roundRect ? ctx.roundRect(x + pad, y + pad, w - pad * 2, h - pad * 2, r * 0.25) : ctx.fillRect(x + pad, y + pad, w - pad * 2, h - pad * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,0.18)";
+        ctx.fillRect(x + pad * 1.5, y + pad * 1.5, w - pad * 3, h * 0.22);
+        break;
+      }
+      case "kaleidoscope": {
+        ctx.fillStyle = "#0a0612"; ctx.fillRect(x, y, w, h);
+        ctx.fillStyle = cor;
+        for (let k = 0; k < 4; k++) {
+          ctx.save(); ctx.translate(cx, cy); ctx.rotate((Math.PI / 2) * k);
+          ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(w * 0.45, h * 0.15); ctx.lineTo(w * 0.15, h * 0.45); ctx.closePath(); ctx.fill();
+          ctx.restore();
+        }
+        break;
+      }
+      case "cyber_skull": {
+        ctx.fillStyle = "#09090d"; ctx.fillRect(x, y, w, h);
+        ctx.fillStyle = cor;
+        ctx.fillRect(x + w * 0.2, y + h * 0.12, w * 0.6, h * 0.5);
+        ctx.fillRect(x + w * 0.3, y + h * 0.62, w * 0.4, h * 0.26);
+        ctx.fillStyle = "#09090d";
+        ctx.fillRect(x + w * 0.28, y + h * 0.32, w * 0.16, h * 0.16);
+        ctx.fillRect(x + w * 0.56, y + h * 0.32, w * 0.16, h * 0.16);
+        break;
+      }
       default: ctx.fillStyle=cor; ctx.fillRect(x,y,w,h); break;
     }
   }
