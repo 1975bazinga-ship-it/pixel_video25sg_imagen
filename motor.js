@@ -1627,6 +1627,87 @@
     document.getElementById("btnAddCustom").addEventListener("click", () => { state.customPalette.push(document.getElementById("customColor").value); state.useCustomPalette = true; atualizarPreviewPaleta(); if (state.layersActive) renderLayersFrame(); else renderRetroFrame(); });
     document.getElementById("btnUseCustom").addEventListener("click", () => { state.useCustomPalette = true; atualizarPreviewPaleta(); if (state.layersActive) renderLayersFrame(); else renderRetroFrame(); });
     document.getElementById("btnClearCustom").addEventListener("click", () => { state.customPalette = []; state.useCustomPalette = false; atualizarPreviewPaleta(); if (state.layersActive) renderLayersFrame(); else renderRetroFrame(); });
+	
+	    // Importar Paleta de Imagem (.PNG 256x1, 256x2, 256x6, etc.)
+    const btnImportPalImg = document.getElementById("btnImportPaletteImg");
+    const paletteImgInput = document.getElementById("paletteImgInput");
+
+    if (btnImportPalImg && paletteImgInput) {
+      btnImportPalImg.addEventListener("click", () => paletteImgInput.click());
+
+      paletteImgInput.addEventListener("change", (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+
+        img.onload = () => {
+          const tmpCanvas = document.createElement("canvas");
+          tmpCanvas.width = img.width;
+          tmpCanvas.height = img.height;
+          const tmpCtx = tmpCanvas.getContext("2d", { willReadFrequently: true });
+          tmpCtx.drawImage(img, 0, 0);
+
+          const data = tmpCtx.getImageData(0, 0, img.width, img.height).data;
+          const uniqueHex = new Set();
+
+          // Lê os pixels da imagem paleta e extrai até 256 cores únicas (ignorando pixels transparentes)
+          for (let i = 0; i < data.length; i += 4) {
+            if (data[i + 3] < 128) continue;
+            const hex =
+              "#" +
+              [data[i], data[i + 1], data[i + 2]]
+                .map((v) => v.toString(16).padStart(2, "0"))
+                .join("");
+            uniqueHex.add(hex);
+            if (uniqueHex.size >= 256) break;
+          }
+
+          URL.revokeObjectURL(url);
+
+          if (uniqueHex.size === 0) {
+            alert("Nenhuma cor válida encontrada na imagem.");
+            return;
+          }
+
+          const coresExtraidas = Array.from(uniqueHex);
+          const nomeLimpo = file.name.replace(/\.[^/.]+$/, "");
+          const palKey = `imported_${Date.now()}`;
+
+          // Registra no banco global de paletas para funcionar na Paleta Base e nas 20 Camadas
+          window.BANCO_PALETAS[palKey] = {
+            nome: `🎨 ${nomeLimpo} (${coresExtraidas.length} cores)`,
+            cores: coresExtraidas
+          };
+
+          // Atualiza o seletor principal e os seletores das 20 camadas
+          populatePaletaSelect(selectPaleta, palKey);
+          document.getElementById("paletaCount").textContent = getPaletasKeys().length;
+          state.layers.forEach((layer, lIdx) => {
+            const lSel = document.getElementById(`layer_pal_${lIdx}`);
+            if (lSel) populatePaletaSelect(lSel, layer.palette);
+          });
+
+          // Ativa imediatamente a paleta importada
+          state.paletteKey = palKey;
+          state.useCustomPalette = false;
+          atualizarPreviewPaleta();
+
+          statusBadge.textContent = `✅ Paleta "${nomeLimpo}" (${coresExtraidas.length} cores) importada!`;
+          if (state.layersActive) renderLayersFrame();
+          else renderRetroFrame();
+        };
+
+        img.onerror = () => {
+          URL.revokeObjectURL(url);
+          alert("Erro ao ler a imagem da paleta.");
+        };
+
+        img.src = url;
+        paletteImgInput.value = "";
+      });
+    }
     
     document.getElementById("btnCornerColor").addEventListener("click", () => {
       const p = offCtx.getImageData(0,0,1,1).data;

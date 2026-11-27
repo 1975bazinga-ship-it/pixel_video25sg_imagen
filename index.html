@@ -119,6 +119,11 @@
       <label>Paleta Base (fundo / restante): <span id="paletaCount" style="font-size:10px;color:#71717a;">0</span></label>
       <select id="selectPaleta"></select>
       <div id="palettePreview" class="palette-preview"></div>
+	        <div id="palettePreview" class="palette-preview"></div>
+      <div class="row">
+        <input type="file" id="paletteImgInput" accept="image/png,image/jpeg,image/webp" style="display:none">
+        <button id="btnImportPaletteImg" style="width: 100%;">🎨 Importar Paleta (.PNG 256x1 / 256x6)</button>
+      </div>
       <div class="row">
         <input type="color" id="customColor" value="#ff0055">
         <button id="btnAddCustom">+ Cor</button>
