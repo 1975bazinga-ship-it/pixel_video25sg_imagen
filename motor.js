@@ -52,7 +52,6 @@
 
     mediaRecorder: null,
     recordedChunks: [],
-      // Adicione dentro de const state = { ... }
     customFonts: [
       { name: "Arial", family: "Arial, sans-serif" },
       { name: "Pixel / Monospace", family: "monospace" },
@@ -64,8 +63,17 @@
       { id: 1, active: false, content: "TEXTO 1", x: 50, y: 60, size: 36, color: "#ffffff", strokeColor: "#000000", strokeWidth: 3, fontFamily: "Arial, sans-serif", layerPos: "front", applyStyle: false, applyPalette: false, align: "left", rotation: 0, anim: "none", speed: 1 },
       { id: 2, active: false, content: "TEXTO 2", x: 50, y: 140, size: 28, color: "#00ffcc", strokeColor: "#000000", strokeWidth: 2, fontFamily: "monospace", layerPos: "front", applyStyle: true, applyPalette: true, align: "left", rotation: 0, anim: "none", speed: 1 },
       { id: 3, active: false, content: "TEXTO 3", x: 50, y: 220, size: 32, color: "#ff0055", strokeColor: "#000000", strokeWidth: 2, fontFamily: "Impact, sans-serif", layerPos: "back", applyStyle: false, applyPalette: false, align: "left", rotation: 0, anim: "none", speed: 1 }
-    ]
-    };
+    ],
+
+    // 7 Camadas de Fundo Parallax (Camada 1 = mais distante -> Camada 7 = mais próxima)
+    parallaxLayers: Array.from({ length: 7 }, (_, i) => ({
+      id: i + 1,
+      active: true,
+      img: null,
+      name: "",
+      speed: (i + 1) * 15 // Velocidade padrão progressiva (px/seg)
+    }))
+  };
 
   function getPaletasKeys() { return Object.keys(window.BANCO_PALETAS); }
   function getPaletaNome(k) { return window.BANCO_PALETAS[k]?.nome || k; }
@@ -927,6 +935,139 @@
     targetCtx.drawImage(outCanvas, 0, 0);
   }
 
+    // SISTEMA DE PARALLAX 7 CAMADAS (MENU ABAIXO DO FOOTER + DESENHO NO FUNDO)
+  function initParallaxControls() {
+    const footer = document.querySelector("footer");
+    if (!footer) return;
+
+    // Procura o container que você já colocou abaixo do footer ou cria um novo
+    let panel = document.getElementById("parallaxPanel");
+    if (!panel) {
+      panel = document.createElement("section");
+      panel.id = "parallaxPanel";
+      panel.style.cssText = "background:#121216; border-top:1px solid #27272a; padding:8px 12px; color:#e4e4e7; font-size:12px;";
+      footer.insertAdjacentElement("afterend", panel);
+    }
+
+    const updateCount = () => {
+      const loaded = state.parallaxLayers.filter(l => l.img !== null).length;
+      const badge = document.getElementById("parallaxCountBadge");
+      if (badge) badge.textContent = `${loaded} / 7`;
+    };
+
+    panel.innerHTML = `
+      <div id="parallaxToggleHeader" style="display:flex; justify-content:space-between; align-items:center; cursor:pointer; font-weight:bold; color:#00ffcc; user-select:none; padding:4px 0;">
+        <span>🏔 Fundo Parallax (7 Camadas) — Clique para expandir/recolher</span>
+        <span id="parallaxCountBadge" style="background:#27272a; padding:2px 8px; border-radius:10px; color:#fff;">0 / 7</span>
+      </div>
+      <div id="parallaxGrid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap:8px; margin-top:8px;"></div>
+    `;
+
+    const header = document.getElementById("parallaxToggleHeader");
+    const grid = document.getElementById("parallaxGrid");
+    header.addEventListener("click", () => {
+      grid.style.display = grid.style.display === "none" ? "grid" : "none";
+    });
+
+    state.parallaxLayers.forEach((layer, idx) => {
+      const box = document.createElement("div");
+      box.style.cssText = "background:#18181b; border:1px solid #3f3f46; border-radius:6px; padding:8px; display:flex; flex-direction:column; gap:6px;";
+      box.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <label style="font-weight:bold; color:#38bdf8; cursor:pointer;">
+            <input type="checkbox" id="plx_act_${idx}" ${layer.active ? "checked" : ""}> Camada ${idx + 1} ${idx === 0 ? "(Longe)" : idx === 6 ? "(Perto)" : ""}
+          </label>
+          <button id="plx_clr_${idx}" title="Remover imagem" style="background:#3f3f46; color:#fff; border:none; border-radius:4px; padding:1px 6px; cursor:pointer;">×</button>
+        </div>
+        <div style="display:flex; gap:4px; align-items:center;">
+          <button id="plx_btn_${idx}" style="flex:1; background:#27272a; color:#fff; border:1px solid #52525b; border-radius:4px; padding:4px; cursor:pointer; font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">📂 Abrir Imagem</button>
+          <input type="file" id="plx_file_${idx}" accept="image/*" style="display:none;">
+        </div>
+        <div style="display:flex; align-items:center; gap:6px; font-size:11px;">
+          <span>Vel:</span>
+          <input type="number" id="plx_spd_${idx}" value="${layer.speed}" step="5" min="-1000" max="1000" style="width:65px; background:#09090b; color:#00ffcc; border:1px solid #3f3f46; border-radius:4px; padding:3px;">
+          <span style="color:#a1a1aa;">px/s</span>
+        </div>
+      `;
+      grid.appendChild(box);
+
+      const triggerRender = () => {
+        if (videoEl.paused || state.mediaType === "image" || state.mediaType === "demo") {
+          state.layersActive ? renderLayersFrame() : renderRetroFrame();
+        }
+      };
+
+      const fileInp = document.getElementById(`plx_file_${idx}`);
+      const openBtn = document.getElementById(`plx_btn_${idx}`);
+
+      openBtn.addEventListener("click", () => fileInp.click());
+      fileInp.addEventListener("change", (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+          layer.img = img;
+          layer.name = file.name;
+          layer.active = true;
+          document.getElementById(`plx_act_${idx}`).checked = true;
+          openBtn.textContent = `🖼 ${file.name}`;
+          updateCount();
+          triggerRender();
+        };
+        img.src = url;
+        fileInp.value = "";
+      });
+
+      document.getElementById(`plx_act_${idx}`).addEventListener("change", (e) => {
+        layer.active = e.target.checked;
+        triggerRender();
+      });
+
+      document.getElementById(`plx_spd_${idx}`).addEventListener("input", (e) => {
+        layer.speed = parseFloat(e.target.value) || 0;
+        triggerRender();
+      });
+
+      document.getElementById(`plx_clr_${idx}`).addEventListener("click", () => {
+        layer.img = null;
+        layer.name = "";
+        openBtn.textContent = "📂 Abrir Imagem";
+        updateCount();
+        triggerRender();
+      });
+    });
+  }
+
+  function drawParallaxBackground(targetCtx, w, h, customTime = null) {
+    const t = customTime !== null ? customTime : (state.mediaType === "video" ? videoEl.currentTime : state.synthTime);
+    targetCtx.save();
+    targetCtx.imageSmoothingEnabled = false;
+
+    for (let i = 0; i < state.parallaxLayers.length; i++) {
+      const layer = state.parallaxLayers[i];
+      if (!layer.active || !layer.img) continue;
+
+      const iw = layer.img.naturalWidth || layer.img.width;
+      const ih = layer.img.naturalHeight || layer.img.height;
+      if (!iw || !ih) continue;
+
+      // Ajusta proporcionalmente à altura do canvas para preencher o cenário sem distorcer
+      const scale = h / ih;
+      const drawW = Math.max(1, iw * scale);
+      const drawH = h;
+
+      // Calcula o deslocamento contínuo (loop infinito horizontal)
+      let offsetX = (-(t * layer.speed * scale)) % drawW;
+      if (offsetX > 0) offsetX -= drawW;
+
+      for (let x = offsetX; x < w; x += drawW) {
+        targetCtx.drawImage(layer.img, Math.floor(x), 0, Math.ceil(drawW), Math.ceil(drawH));
+      }
+    }
+    targetCtx.restore();
+  }
+  
   // RENDERIZAÇÃO RETRÔ
   function renderRetroFrame() {
     if (state.layersActive) return;
@@ -950,6 +1091,9 @@
     const opts = getGlobalOptions();
 
     ctx.clearRect(0, 0, w, h);
+
+    // 0. Desenha as 7 camadas de Parallax bem no fundo (atrás de tudo)
+    drawParallaxBackground(ctx, w, h);
 
     // 1. Desenha os textos configurados para ficarem ATRÁS da imagem/vídeo
     state.texts
@@ -999,6 +1143,9 @@
 
     fullCtx.clearRect(0, 0, W, H);
 
+    // 0. Fundo Parallax em alta resolução
+    drawParallaxBackground(fullCtx, W, H);
+
     // 1. Desenha os textos configurados para ficarem ATRÁS em alta resolução
     state.texts
       .filter((t) => t.layerPos === "back")
@@ -1044,14 +1191,15 @@
       if (state.layersActive) return;
 
       const hasAnimatedText = state.texts.some(t => t.active && t.anim && t.anim !== "none");
+      const hasMovingParallax = state.parallaxLayers.some(l => l.active && l.img && l.speed !== 0);
 
       if (state.mediaType === "video") {
         if (!videoEl.paused && !videoEl.ended) renderRetroFrame();
-        else if (hasAnimatedText) { state.synthTime += dt; renderRetroFrame(); }
+        else if (hasAnimatedText || hasMovingParallax) { state.synthTime += dt; renderRetroFrame(); }
       } else if (state.mediaType === "synth" && state.isPlaying) {
         state.synthTime += dt;
         renderRetroFrame();
-      } else if (state.mediaType === "image" && hasAnimatedText) {
+      } else if (state.mediaType === "image" && (hasAnimatedText || hasMovingParallax)) {
         state.synthTime += dt;
         renderRetroFrame();
       }
@@ -1336,7 +1484,7 @@
 
         window.EstiloRenderer.desenharBloco(ctx, targetStyle, startX, startY, bw, bh, finalRgb, bx, by, px);
 
-        if (state.showDebug && matchedLayer) {
+         if (state.showDebug && matchedLayer) {
           ctx.strokeStyle = matchedLayer.colors[0].hex;
           ctx.lineWidth = 1;
           ctx.strokeRect(startX + 0.5, startY + 0.5, bw - 1, bh - 1);
@@ -1344,14 +1492,14 @@
       }
     }
 
-    // 1. Guarda o desenho das 20 camadas em um canvas temporário
     const layersSnapshot = document.createElement("canvas");
     layersSnapshot.width = srcW;
     layersSnapshot.height = srcH;
     layersSnapshot.getContext("2d").drawImage(mainCanvas, 0, 0);
 
-    // 2. Limpa a tela e desenha na ordem certa: Texto Atrás -> Camadas -> Texto na Frente
     ctx.clearRect(0, 0, srcW, srcH);
+
+    drawParallaxBackground(ctx, srcW, srcH);
 
     state.texts
       .filter((t) => t.layerPos === "back")
@@ -1372,8 +1520,8 @@
   }
 
   function renderLayersFrameFullRes() {
-    let W = (state.mediaType === "image" && state.currentImg) ? state.currentImg.naturalWidth : (videoEl.videoWidth || mainCanvas.width);
-    let H = (state.mediaType === "image" && state.currentImg) ? state.currentImg.naturalHeight : (videoEl.videoHeight || mainCanvas.height);
+    let W = (state.mediaType === "image" && state.currentImg) ? (state.currentImg.naturalWidth || state.currentImg.width) : (videoEl.videoWidth || mainCanvas.width);
+    let H = (state.mediaType === "image" && state.currentImg) ? (state.currentImg.naturalHeight || state.currentImg.height) : (videoEl.videoHeight || mainCanvas.height);
 
     const fullCanvas = document.createElement("canvas");
     fullCanvas.width = W; fullCanvas.height = H;
@@ -1459,6 +1607,7 @@
     layersSnapshot.getContext("2d").drawImage(fullCanvas, 0, 0);
 
     fullCtx.clearRect(0, 0, W, H);
+    drawParallaxBackground(fullCtx, W, H);
     state.texts
       .filter((t) => t.layerPos === "back")
       .forEach((t) => drawSingleText(fullCtx, t, W, H, scaleFactor));
@@ -1479,10 +1628,11 @@
       if (!state.layersActive) { state.layersAnimFrameId = null; return; }
 
       const hasAnimatedText = state.texts.some(t => t.active && t.anim && t.anim !== "none");
+      const hasMovingParallax = state.parallaxLayers.some(l => l.active && l.img && l.speed !== 0);
 
       if (state.mediaType === "video" && !videoEl.paused && !videoEl.ended) {
         renderLayersFrame();
-      } else if (hasAnimatedText) {
+      } else if (hasAnimatedText || hasMovingParallax) {
         state.synthTime += dt;
         renderLayersFrame();
       }
@@ -1577,10 +1727,11 @@
     populateEstiloSelect(selectEstilo, "quadrado_media");
     document.getElementById("paletaCount").textContent = getPaletasKeys().length;
     document.getElementById("estiloCount").textContent = getEstilosIds().length;
-       atualizarPreviewPaleta();
+    atualizarPreviewPaleta();
     initLayers();
     initTextControls();
-	initProjectSaveLoad();
+    initParallaxControls();
+    initProjectSaveLoad();
 
     // CORREÇÃO CRÍTICA AQUI: Se o vídeo estiver tocando, só atualiza os estados, deixa o loop cuidar de desenhar
     document.getElementById("rangeBloco").addEventListener("input", (e) => {
